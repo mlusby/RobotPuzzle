@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Robot body -->
+  <rect x="20" y="35" width="60" height="50" rx="15" ry="15" fill="#a0a0a0" stroke="#666" stroke-width="3"/>
+  
+  <!-- Robot head -->
+  <rect x="15" y="10" width="70" height="50" rx="20" ry="20" fill="#a0a0a0" stroke="#666" stroke-width="3"/>
+  
+  <!-- Robot ears -->
+  <rect x="8" y="25" width="12" height="20" rx="6" ry="6" fill="#a0a0a0" stroke="#666" stroke-width="3"/>
+  <rect x="80" y="25" width="12" height="20" rx="6" ry="6" fill="#a0a0a0" stroke="#666" stroke-width="3"/>
+  
+  <!-- Robot eyes -->
+  <circle cx="35" cy="30" r="8" fill="#666"/>
+  <circle cx="65" cy="30" r="8" fill="#666"/>
+  
+  <!-- Robot mouth -->
+  <rect x="40" y="45" width="20" height="4" rx="2" ry="2" fill="#666"/>
+  
+  <!-- Robot arms -->
+  <circle cx="10" cy="70" r="8" fill="#a0a0a0" stroke="#666" stroke-width="3"/>
+  <circle cx="90" cy="70" r="8" fill="#a0a0a0" stroke="#666" stroke-width="3"/>
+  
+  <!-- Robot hands -->
+  <path d="M 5 75 Q 2 78 5 81 Q 8 78 5 75" fill="none" stroke="#666" stroke-width="3"/>
+  <path d="M 95 75 Q 92 78 95 81 Q 98 78 95 75" fill="none" stroke="#666" stroke-width="3"/>
+</svg>

@@ -1,0 +1,228 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Arial', sans-serif;
+    background-color: #f0f0f0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 20px;
+}
+
+.game-container {
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    padding: 20px;
+    max-width: 600px;
+    width: 100%;
+}
+
+.game-header {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.game-header h1 {
+    color: #333;
+    margin-bottom: 15px;
+}
+
+.game-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+.goal {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: bold;
+    color: #555;
+}
+
+.target-preview {
+    width: 20px;
+    height: 20px;
+    border: 2px solid #333;
+    border-radius: 3px;
+    background: radial-gradient(circle, #fff 30%, transparent 30%);
+    background-size: 8px 8px;
+}
+
+.controls {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.move-counter {
+    font-weight: bold;
+    color: #333;
+    font-size: 18px;
+}
+
+#reset-btn {
+    padding: 8px 16px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: bold;
+    transition: background-color 0.2s;
+}
+
+#reset-btn:hover {
+    background-color: #0056b3;
+}
+
+.game-board-container {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    margin-top: 20px;
+}
+
+.game-board {
+    display: grid;
+    grid-template-columns: repeat(16, 1fr);
+    grid-template-rows: repeat(16, 1fr);
+    gap: 1px;
+    width: 480px;
+    height: 480px;
+    background-color: #333;
+    border: 3px solid #333;
+    position: relative;
+    user-select: none;
+    touch-action: none;
+}
+
+.square {
+    background-color: white;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.1s ease;
+}
+
+.square.center-wall {
+    background-color: #666;
+}
+
+.square.path-preview {
+    background-color: rgba(0, 123, 255, 0.1);
+}
+
+.square.path-end {
+    background-color: rgba(0, 123, 255, 0.3);
+}
+
+.robot {
+    width: 80%;
+    height: 80%;
+    border-radius: 50%;
+    position: absolute;
+    top: 10%;
+    left: 10%;
+    cursor: grab;
+    z-index: 10;
+    border: 2px solid rgba(0, 0, 0, 0.2);
+    transition: transform 0.3s ease;
+    box-sizing: border-box;
+}
+
+.robot:active {
+    cursor: grabbing;
+    transform: scale(1.1);
+}
+
+.robot.silver {
+    background: linear-gradient(45deg, #c0c0c0, #e6e6e6);
+}
+
+.robot.green {
+    background: linear-gradient(45deg, #4CAF50, #66BB6A);
+}
+
+.robot.red {
+    background: linear-gradient(45deg, #f44336, #ef5350);
+}
+
+.robot.yellow {
+    background: linear-gradient(45deg, #FFEB3B, #FFF176);
+}
+
+.robot.blue {
+    background: linear-gradient(45deg, #2196F3, #42A5F5);
+}
+
+.target-square {
+    position: absolute;
+    pointer-events: none;
+    z-index: 5;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.9) 30%, transparent 30%);
+    background-size: 6px 6px;
+    border: 2px solid #333;
+    border-radius: 3px;
+    opacity: 0.8;
+    box-sizing: border-box;
+}
+
+.wall-top {
+    border-top: 4px solid #333 !important;
+}
+
+.wall-bottom {
+    border-bottom: 4px solid #333 !important;
+}
+
+.wall-left {
+    border-left: 4px solid #333 !important;
+}
+
+.wall-right {
+    border-right: 4px solid #333 !important;
+}
+
+@media (max-width: 600px) {
+    .game-board {
+        width: 320px;
+        height: 320px;
+    }
+    
+    .game-info {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .controls {
+        justify-content: center;
+    }
+    
+    .robot {
+        width: 70%;
+        height: 70%;
+    }
+}
+
+@media (max-width: 400px) {
+    .game-board {
+        width: 280px;
+        height: 280px;
+    }
+    
+    .game-container {
+        padding: 15px;
+    }
+}

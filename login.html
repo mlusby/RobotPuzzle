@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Robot Puzzle - Login</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="alternate icon" href="favicon.svg">
+    <link rel="mask-icon" href="favicon.svg" color="#666">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .auth-container {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            padding: 40px;
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .auth-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .auth-header h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .auth-header p {
+            color: #666;
+            font-size: 16px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #333;
+            font-weight: bold;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .auth-switch {
+            text-align: center;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+        }
+
+        .auth-switch button {
+            background: none;
+            border: none;
+            color: #667eea;
+            cursor: pointer;
+            font-size: 14px;
+            text-decoration: underline;
+        }
+
+        .auth-switch button:hover {
+            color: #764ba2;
+        }
+
+        .error-message {
+            background: #fee;
+            color: #c33;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .success-message {
+            background: #efe;
+            color: #363;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .loading::after {
+            content: '';
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .forgot-password {
+            text-align: center;
+            margin-top: 15px;
+        }
+
+        .forgot-password button {
+            background: none;
+            border: none;
+            color: #667eea;
+            cursor: pointer;
+            font-size: 14px;
+            text-decoration: underline;
+        }
+
+        .forgot-password button:hover {
+            color: #764ba2;
+        }
+    </style>
+</head>
+<body>
+    <div class="auth-container">
+        <div class="auth-header">
+            <h1>Robot Puzzle</h1>
+            <p>Sign in to access your board configurations</p>
+        </div>
+
+        <div class="error-message" id="error-message"></div>
+        <div class="success-message" id="success-message"></div>
+        <div class="loading" id="loading"></div>
+
+        <!-- Sign In Form -->
+        <form id="sign-in-form">
+            <div class="form-group">
+                <label for="sign-in-email">Email</label>
+                <input type="email" id="sign-in-email" name="email" required>
+            </div>
+            <div class="form-group">
+                <label for="sign-in-password">Password</label>
+                <input type="password" id="sign-in-password" name="password" required>
+            </div>
+            <button type="submit" class="btn" id="sign-in-btn">Sign In</button>
+            
+            <div class="forgot-password">
+                <button type="button" id="forgot-password-btn">Forgot Password?</button>
+            </div>
+        </form>
+
+        <!-- Sign Up Form -->
+        <form id="sign-up-form" style="display: none;">
+            <div class="form-group">
+                <label for="sign-up-email">Email</label>
+                <input type="email" id="sign-up-email" name="email" required>
+            </div>
+            <div class="form-group">
+                <label for="sign-up-password">Password</label>
+                <input type="password" id="sign-up-password" name="password" required minlength="8">
+            </div>
+            <div class="form-group">
+                <label for="confirm-password">Confirm Password</label>
+                <input type="password" id="confirm-password" name="confirmPassword" required minlength="8">
+            </div>
+            <button type="submit" class="btn" id="sign-up-btn">Sign Up</button>
+        </form>
+
+        <!-- Confirmation Form -->
+        <form id="confirmation-form" style="display: none;">
+            <div class="form-group">
+                <label for="confirmation-code">Confirmation Code</label>
+                <input type="text" id="confirmation-code" name="confirmationCode" required>
+                <small style="color: #666; font-size: 12px;">Check your email for the confirmation code</small>
+            </div>
+            <button type="submit" class="btn" id="confirm-btn">Confirm Account</button>
+        </form>
+
+        <!-- Password Reset Form -->
+        <form id="reset-password-form" style="display: none;">
+            <div class="form-group">
+                <label for="reset-email">Email</label>
+                <input type="email" id="reset-email" name="email" required>
+            </div>
+            <button type="submit" class="btn" id="reset-btn">Send Reset Code</button>
+        </form>
+
+        <!-- New Password Form -->
+        <form id="new-password-form" style="display: none;">
+            <div class="form-group">
+                <label for="reset-code">Reset Code</label>
+                <input type="text" id="reset-code" name="resetCode" required>
+            </div>
+            <div class="form-group">
+                <label for="new-password">New Password</label>
+                <input type="password" id="new-password" name="newPassword" required minlength="8">
+            </div>
+            <button type="submit" class="btn" id="new-password-btn">Update Password</button>
+        </form>
+
+        <div class="auth-switch">
+            <span id="auth-switch-text">Don't have an account?</span>
+            <button type="button" id="auth-switch-btn">Sign Up</button>
+        </div>
+    </div>
+
+    <!-- AWS SDK -->
+    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1590.0.min.js"></script>
+    <script src="https://unpkg.com/amazon-cognito-identity-js@6.3.7/dist/amazon-cognito-identity.min.js"></script>
+    
+    <!-- Application Scripts -->
+    <script src="js/aws-config.js"></script>
+    <script src="js/auth-service.js"></script>
+    
+    <script>
+        class LoginManager {
+            constructor() {
+                this.currentMode = 'signin';
+                this.pendingEmail = '';
+                this.init();
+            }
+
+            init() {
+                this.setupEventListeners();
+                
+                // Check if user is already authenticated
+                if (authService.isAuthenticated()) {
+                    this.redirectToApp();
+                }
+            }
+
+            setupEventListeners() {
+                // Form submissions
+                document.getElementById('sign-in-form').addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    this.handleSignIn();
+                });
+
+                document.getElementById('sign-up-form').addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    this.handleSignUp();
+                });
+
+                document.getElementById('confirmation-form').addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    this.handleConfirmation();
+                });
+
+                document.getElementById('reset-password-form').addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    this.handleForgotPassword();
+                });
+
+                document.getElementById('new-password-form').addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    this.handleNewPassword();
+                });
+
+                // Mode switching
+                document.getElementById('auth-switch-btn').addEventListener('click', () => {
+                    this.toggleMode();
+                });
+
+                document.getElementById('forgot-password-btn').addEventListener('click', () => {
+                    this.showForm('reset-password');
+                });
+
+                // Auth state changes
+                window.addEventListener('authStateChange', (event) => {
+                    if (event.detail.state === 'signedIn') {
+                        this.redirectToApp();
+                    }
+                });
+            }
+
+            async handleSignIn() {
+                const email = document.getElementById('sign-in-email').value;
+                const password = document.getElementById('sign-in-password').value;
+
+                this.showLoading(true);
+                this.clearMessages();
+
+                try {
+                    await authService.signIn(email, password);
+                    this.showSuccess('Sign in successful! Redirecting...');
+                    // Redirect will happen via auth state change event
+                } catch (error) {
+                    this.showError(error.message);
+                } finally {
+                    this.showLoading(false);
+                }
+            }
+
+            async handleSignUp() {
+                const email = document.getElementById('sign-up-email').value;
+                const password = document.getElementById('sign-up-password').value;
+                const confirmPassword = document.getElementById('confirm-password').value;
+
+                this.showLoading(true);
+                this.clearMessages();
+
+                try {
+                    await authService.signUp(email, password, confirmPassword);
+                    this.pendingEmail = email;
+                    this.showForm('confirmation');
+                    this.showSuccess('Account created! Please check your email for the confirmation code.');
+                } catch (error) {
+                    this.showError(error.message);
+                } finally {
+                    this.showLoading(false);
+                }
+            }
+
+            async handleConfirmation() {
+                const confirmationCode = document.getElementById('confirmation-code').value;
+
+                this.showLoading(true);
+                this.clearMessages();
+
+                try {
+                    await authService.confirmSignUp(this.pendingEmail, confirmationCode);
+                    this.showSuccess('Account confirmed! You can now sign in.');
+                    this.showForm('signin');
+                } catch (error) {
+                    this.showError(error.message);
+                } finally {
+                    this.showLoading(false);
+                }
+            }
+
+            async handleForgotPassword() {
+                const email = document.getElementById('reset-email').value;
+
+                this.showLoading(true);
+                this.clearMessages();
+
+                try {
+                    await authService.forgotPassword(email);
+                    this.pendingEmail = email;
+                    this.showForm('new-password');
+                    this.showSuccess('Reset code sent! Check your email.');
+                } catch (error) {
+                    this.showError(error.message);
+                } finally {
+                    this.showLoading(false);
+                }
+            }
+
+            async handleNewPassword() {
+                const resetCode = document.getElementById('reset-code').value;
+                const newPassword = document.getElementById('new-password').value;
+
+                this.showLoading(true);
+                this.clearMessages();
+
+                try {
+                    await authService.confirmPassword(this.pendingEmail, resetCode, newPassword);
+                    this.showSuccess('Password updated! You can now sign in.');
+                    this.showForm('signin');
+                } catch (error) {
+                    this.showError(error.message);
+                } finally {
+                    this.showLoading(false);
+                }
+            }
+
+            toggleMode() {
+                if (this.currentMode === 'signin') {
+                    this.showForm('signup');
+                } else {
+                    this.showForm('signin');
+                }
+            }
+
+            showForm(formType) {
+                // Hide all forms
+                document.getElementById('sign-in-form').style.display = 'none';
+                document.getElementById('sign-up-form').style.display = 'none';
+                document.getElementById('confirmation-form').style.display = 'none';
+                document.getElementById('reset-password-form').style.display = 'none';
+                document.getElementById('new-password-form').style.display = 'none';
+
+                // Show requested form
+                switch (formType) {
+                    case 'signin':
+                        document.getElementById('sign-in-form').style.display = 'block';
+                        document.getElementById('auth-switch-text').textContent = "Don't have an account?";
+                        document.getElementById('auth-switch-btn').textContent = "Sign Up";
+                        this.currentMode = 'signin';
+                        break;
+                    case 'signup':
+                        document.getElementById('sign-up-form').style.display = 'block';
+                        document.getElementById('auth-switch-text').textContent = "Already have an account?";
+                        document.getElementById('auth-switch-btn').textContent = "Sign In";
+                        this.currentMode = 'signup';
+                        break;
+                    case 'confirmation':
+                        document.getElementById('confirmation-form').style.display = 'block';
+                        document.getElementById('auth-switch-text').textContent = "Back to";
+                        document.getElementById('auth-switch-btn').textContent = "Sign In";
+                        break;
+                    case 'reset-password':
+                        document.getElementById('reset-password-form').style.display = 'block';
+                        document.getElementById('auth-switch-text').textContent = "Back to";
+                        document.getElementById('auth-switch-btn').textContent = "Sign In";
+                        break;
+                    case 'new-password':
+                        document.getElementById('new-password-form').style.display = 'block';
+                        document.getElementById('auth-switch-text').textContent = "Back to";
+                        document.getElementById('auth-switch-btn').textContent = "Sign In";
+                        break;
+                }
+
+                this.clearMessages();
+            }
+
+            showError(message) {
+                const errorElement = document.getElementById('error-message');
+                errorElement.textContent = message;
+                errorElement.style.display = 'block';
+                document.getElementById('success-message').style.display = 'none';
+            }
+
+            showSuccess(message) {
+                const successElement = document.getElementById('success-message');
+                successElement.textContent = message;
+                successElement.style.display = 'block';
+                document.getElementById('error-message').style.display = 'none';
+            }
+
+            clearMessages() {
+                document.getElementById('error-message').style.display = 'none';
+                document.getElementById('success-message').style.display = 'none';
+            }
+
+            showLoading(show) {
+                document.getElementById('loading').style.display = show ? 'block' : 'none';
+                
+                // Disable all buttons during loading
+                const buttons = document.querySelectorAll('button');
+                buttons.forEach(button => button.disabled = show);
+            }
+
+            redirectToApp() {
+                // Add a small delay to show success message
+                setTimeout(() => {
+                    window.location.href = 'index.html';
+                }, 1000);
+            }
+        }
+
+        // Initialize login manager
+        document.addEventListener('DOMContentLoaded', () => {
+            new LoginManager();
+        });
+    </script>
+</body>
+</html>

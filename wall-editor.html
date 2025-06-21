@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Robot Puzzle - Board Configuration</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="alternate icon" href="favicon.svg">
+    <link rel="mask-icon" href="favicon.svg" color="#666">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f0f0f0;
+            padding: 20px;
+        }
+
+        .editor-container {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .editor-header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .editor-header h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .controls button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            transition: background-color 0.2s;
+        }
+
+        .controls button:hover {
+            background-color: #0056b3;
+        }
+
+        .controls button.clear {
+            background-color: #dc3545;
+        }
+
+        .controls button.clear:hover {
+            background-color: #c82333;
+        }
+
+        .grid-container {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        .grid {
+            position: relative;
+            width: 640px;
+            height: 640px;
+            background-color: #333;
+            border: 2px solid #333;
+        }
+
+        .square {
+            position: absolute;
+            background-color: white;
+            border: 1px solid #ddd;
+        }
+
+        .square.center {
+            background-color: #666;
+        }
+
+        .wall-line {
+            position: absolute;
+            background-color: transparent;
+            cursor: pointer;
+            z-index: 10;
+            transition: background-color 0.1s;
+        }
+
+        .wall-line:hover {
+            background-color: rgba(255, 0, 0, 0.3);
+        }
+
+        .wall-line.horizontal {
+            height: 6px;
+            width: 40px;
+            margin-top: -3px;
+        }
+
+        .wall-line.vertical {
+            width: 6px;
+            height: 40px;
+            margin-left: -3px;
+        }
+
+        .wall-line.active {
+            background-color: #333 !important;
+        }
+
+        .target-marker {
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            border: 3px solid #000;
+            background-color: #888;
+            cursor: pointer;
+            z-index: 15;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 12px;
+            color: white;
+            text-shadow: 1px 1px 1px rgba(0,0,0,0.8);
+        }
+
+        .config-management {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .config-management select {
+            padding: 8px 12px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        .config-management label {
+            font-weight: bold;
+            color: #333;
+        }
+
+        .mode-selector {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            justify-content: center;
+        }
+
+        .mode-btn {
+            padding: 8px 16px;
+            border: 2px solid #007bff;
+            background-color: white;
+            color: #007bff;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.2s;
+        }
+
+        .mode-btn.active {
+            background-color: #007bff;
+            color: white;
+        }
+
+        .mode-btn:hover {
+            background-color: #0056b3;
+            color: white;
+        }
+
+
+        .output {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            margin-top: 20px;
+        }
+
+        .output h3 {
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .output textarea {
+            width: 100%;
+            height: 200px;
+            font-family: monospace;
+            font-size: 12px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            padding: 10px;
+            resize: vertical;
+        }
+
+        .instructions {
+            background-color: #e7f3ff;
+            border: 1px solid #b3d7ff;
+            border-radius: 5px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+
+        .instructions h3 {
+            margin-bottom: 10px;
+            color: #0066cc;
+        }
+
+        .instructions ul {
+            margin-left: 20px;
+        }
+
+        .instructions li {
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="editor-container">
+        <div class="editor-header">
+            <h1>Board Configuration</h1>
+            <p>Design board layouts with walls and targets for the robot puzzle game</p>
+        </div>
+
+        <div class="config-management">
+            <label for="config-select">Configuration:</label>
+            <select id="config-select">
+                <option value="new">Create New</option>
+            </select>
+            <button id="save-config-btn">Save</button>
+            <button id="delete-config-btn">Delete</button>
+            <button id="test-btn">Test in Game</button>
+            <button id="sign-out-btn">Sign Out</button>
+        </div>
+
+        <div class="instructions">
+            <h3>Instructions:</h3>
+            <ul>
+                <li>Select "Walls" mode to add/remove walls by clicking lines between squares</li>
+                <li>Select "Targets" mode to place multiple target positions on squares</li>
+                <li>Each game round will randomly select ONE target position and assign a random robot color</li>
+                <li>The center 2x2 area and exterior boundaries are permanently walled</li>
+                <li>Save configurations with numbered names - the game randomly selects from saved configurations</li>
+            </ul>
+        </div>
+
+        <div class="mode-selector">
+            <button id="walls-mode" class="mode-btn active">Walls</button>
+            <button id="targets-mode" class="mode-btn">Targets</button>
+        </div>
+
+        <div class="target-info" id="target-info" style="display: none; text-align: center; margin-bottom: 15px; font-style: italic; color: #666;">
+            Click squares to place multiple target positions. Each round randomly picks ONE target and assigns a random robot color.
+        </div>
+
+        <div class="controls">
+            <button id="clear-walls-btn" class="clear">Clear All Walls</button>
+            <button id="clear-targets-btn" class="clear">Clear All Targets</button>
+        </div>
+
+        <div class="grid-container">
+            <div id="grid" class="grid">
+                <!-- Grid squares and wall lines will be generated by JavaScript -->
+            </div>
+        </div>
+
+        <div class="output">
+            <h3>Board Configuration:</h3>
+            <textarea id="config-output" placeholder="Wall configuration will appear here..."></textarea>
+        </div>
+    </div>
+
+    <script>
+        class BoardConfigurator {
+            constructor() {
+                this.gridSize = 16;
+                this.squareSize = 40;
+                this.walls = new Set();
+                this.targets = new Set(); // Set of "x,y" positions
+                this.currentMode = 'walls';
+                this.currentConfigId = null;
+                this.configurations = {};
+                this.init();
+            }
+
+            async init() {
+                this.createGrid();
+                this.addCenterWalls();
+                this.addBoundaryWalls();
+                this.configurations = await this.loadConfigurations();
+                this.populateConfigSelect();
+                this.setupEventListeners();
+                this.updateOutput();
+            }
+
+            async loadConfigurations() {
+                try {
+                    const response = await apiService.getConfigurations();
+                    return response || {};
+                } catch (error) {
+                    console.error('Failed to load configurations:', error);
+                    return {};
+                }
+            }
+
+            async saveConfigurations() {
+                // This method is no longer needed as we save directly via API
+                // Keeping for compatibility but making it a no-op
+            }
+
+            populateConfigSelect() {
+                const select = document.getElementById('config-select');
+                select.innerHTML = '<option value="new">Create New</option>';
+                
+                Object.keys(this.configurations).sort((a, b) => parseInt(a) - parseInt(b)).forEach(id => {
+                    const option = document.createElement('option');
+                    option.value = id;
+                    option.textContent = `Configuration ${id}`;
+                    select.appendChild(option);
+                });
+            }
+
+            createGrid() {
+                const grid = document.getElementById('grid');
+                grid.innerHTML = '';
+
+                // Create squares
+                for (let y = 0; y < this.gridSize; y++) {
+                    for (let x = 0; x < this.gridSize; x++) {
+                        const square = document.createElement('div');
+                        square.className = 'square';
+                        square.dataset.x = x;
+                        square.dataset.y = y;
+                        if ((x === 7 || x === 8) && (y === 7 || y === 8)) {
+                            square.classList.add('center');
+                        }
+                        square.style.left = `${x * this.squareSize}px`;
+                        square.style.top = `${y * this.squareSize}px`;
+                        square.style.width = `${this.squareSize}px`;
+                        square.style.height = `${this.squareSize}px`;
+                        grid.appendChild(square);
+                    }
+                }
+
+                // Create horizontal wall lines (for top/bottom walls of squares)
+                for (let y = 0; y < this.gridSize; y++) {
+                    for (let x = 0; x < this.gridSize; x++) {
+                        // Top wall of square
+                        const topLine = document.createElement('div');
+                        topLine.className = 'wall-line horizontal';
+                        topLine.dataset.squareX = x;
+                        topLine.dataset.squareY = y;
+                        topLine.dataset.direction = 'top';
+                        topLine.style.left = `${x * this.squareSize}px`;
+                        topLine.style.top = `${y * this.squareSize}px`;
+                        grid.appendChild(topLine);
+                        
+                        // Bottom wall of square  
+                        const bottomLine = document.createElement('div');
+                        bottomLine.className = 'wall-line horizontal';
+                        bottomLine.dataset.squareX = x;
+                        bottomLine.dataset.squareY = y;
+                        bottomLine.dataset.direction = 'bottom';
+                        bottomLine.style.left = `${x * this.squareSize}px`;
+                        bottomLine.style.top = `${(y + 1) * this.squareSize}px`;
+                        grid.appendChild(bottomLine);
+                    }
+                }
+
+                // Create vertical wall lines (for left/right walls of squares)
+                for (let y = 0; y < this.gridSize; y++) {
+                    for (let x = 0; x < this.gridSize; x++) {
+                        // Left wall of square
+                        const leftLine = document.createElement('div');
+                        leftLine.className = 'wall-line vertical';
+                        leftLine.dataset.squareX = x;
+                        leftLine.dataset.squareY = y;
+                        leftLine.dataset.direction = 'left';
+                        leftLine.style.left = `${x * this.squareSize}px`;
+                        leftLine.style.top = `${y * this.squareSize}px`;
+                        grid.appendChild(leftLine);
+                        
+                        // Right wall of square
+                        const rightLine = document.createElement('div');
+                        rightLine.className = 'wall-line vertical';
+                        rightLine.dataset.squareX = x;
+                        rightLine.dataset.squareY = y;
+                        rightLine.dataset.direction = 'right';
+                        rightLine.style.left = `${(x + 1) * this.squareSize}px`;
+                        rightLine.style.top = `${y * this.squareSize}px`;
+                        grid.appendChild(rightLine);
+                    }
+                }
+            }
+
+            addCenterWalls() {
+                // Add walls around center 2x2 area
+                for (let x = 7; x <= 8; x++) {
+                    for (let y = 7; y <= 8; y++) {
+                        if (x === 7) this.walls.add(`${x},${y},left`);
+                        if (x === 8) this.walls.add(`${x},${y},right`);
+                        if (y === 7) this.walls.add(`${x},${y},top`);
+                        if (y === 8) this.walls.add(`${x},${y},bottom`);
+                    }
+                }
+            }
+
+            addBoundaryWalls() {
+                // Add all exterior boundary walls
+                for (let x = 0; x < this.gridSize; x++) {
+                    // Top boundary
+                    this.walls.add(`${x},0,top`);
+                    // Bottom boundary
+                    this.walls.add(`${x},${this.gridSize - 1},bottom`);
+                }
+                
+                for (let y = 0; y < this.gridSize; y++) {
+                    // Left boundary
+                    this.walls.add(`0,${y},left`);
+                    // Right boundary
+                    this.walls.add(`${this.gridSize - 1},${y},right`);
+                }
+                
+                this.updateVisualWalls();
+            }
+
+            setupEventListeners() {
+                // Grid clicks
+                document.addEventListener('click', (e) => {
+                    if (this.currentMode === 'walls' && e.target.classList.contains('wall-line')) {
+                        this.toggleWall(e.target);
+                    } else if (this.currentMode === 'targets') {
+                        // Handle target clicks - either on square or target marker
+                        let targetSquare = null;
+                        
+                        if (e.target.classList.contains('square') && !e.target.classList.contains('center')) {
+                            targetSquare = e.target;
+                        } else if (e.target.classList.contains('target-marker')) {
+                            // Clicked on a target marker - find the square it's on
+                            const targetId = e.target.id;
+                            const coords = targetId.replace('target-', '').split('-');
+                            const x = parseInt(coords[0]);
+                            const y = parseInt(coords[1]);
+                            targetSquare = document.querySelector(`[data-x="${x}"][data-y="${y}"]`);
+                        }
+                        
+                        if (targetSquare) {
+                            this.toggleTarget(targetSquare);
+                        }
+                    }
+                });
+
+                // Mode buttons
+                document.getElementById('walls-mode').addEventListener('click', () => {
+                    this.setMode('walls');
+                });
+                document.getElementById('targets-mode').addEventListener('click', () => {
+                    this.setMode('targets');
+                });
+
+
+                // Configuration management
+                document.getElementById('config-select').addEventListener('change', (e) => {
+                    this.loadConfiguration(e.target.value);
+                });
+                document.getElementById('save-config-btn').addEventListener('click', () => {
+                    this.saveCurrentConfiguration();
+                });
+                document.getElementById('delete-config-btn').addEventListener('click', () => {
+                    this.deleteCurrentConfiguration();
+                });
+
+                // Control buttons
+                document.getElementById('clear-walls-btn').addEventListener('click', () => {
+                    this.clearAllWalls();
+                });
+                document.getElementById('clear-targets-btn').addEventListener('click', () => {
+                    this.clearAllTargets();
+                });
+                document.getElementById('test-btn').addEventListener('click', () => {
+                    this.testInGame();
+                });
+                document.getElementById('sign-out-btn').addEventListener('click', () => {
+                    authService.signOut();
+                    window.location.href = 'login.html';
+                });
+            }
+
+            toggleWall(lineElement) {
+                const squareX = parseInt(lineElement.dataset.squareX);
+                const squareY = parseInt(lineElement.dataset.squareY);
+                const direction = lineElement.dataset.direction;
+                const wallKey = `${squareX},${squareY},${direction}`;
+
+                // Don't allow removing center walls or boundary walls
+                const [wallX, wallY, wallDirection] = wallKey.split(',');
+                const wallXInt = parseInt(wallX);
+                const wallYInt = parseInt(wallY);
+                
+                // Protect center walls
+                if ((wallXInt === 7 || wallXInt === 8) && (wallYInt === 7 || wallYInt === 8)) {
+                    return;
+                }
+                
+                // Protect boundary walls
+                if ((wallDirection === 'top' && wallYInt === 0) ||
+                    (wallDirection === 'bottom' && wallYInt === this.gridSize - 1) ||
+                    (wallDirection === 'left' && wallXInt === 0) ||
+                    (wallDirection === 'right' && wallXInt === this.gridSize - 1)) {
+                    return;
+                }
+
+                if (this.walls.has(wallKey)) {
+                    this.walls.delete(wallKey);
+                } else {
+                    this.walls.add(wallKey);
+                }
+
+                this.updateVisualWalls();
+                this.updateOutput();
+            }
+
+            updateVisualWalls() {
+                // Clear all visual walls
+                document.querySelectorAll('.wall-line').forEach(line => {
+                    line.classList.remove('active');
+                });
+
+                // Apply active walls
+                this.walls.forEach(wallKey => {
+                    const [x, y, direction] = wallKey.split(',');
+                    const wx = parseInt(x);
+                    const wy = parseInt(y);
+
+                    const selector = `.wall-line[data-square-x="${wx}"][data-square-y="${wy}"][data-direction="${direction}"]`;
+                    const element = document.querySelector(selector);
+                    if (element) {
+                        element.classList.add('active');
+                    }
+                });
+            }
+
+            clearAllWalls() {
+                this.walls.clear();
+                this.addCenterWalls();
+                this.addBoundaryWalls();
+                this.updateOutput();
+            }
+
+            updateOutput() {
+                const wallArray = Array.from(this.walls).sort();
+                const output = document.getElementById('config-output');
+                output.value = JSON.stringify(wallArray, null, 2);
+            }
+
+            exportConfiguration() {
+                const wallArray = Array.from(this.walls).sort();
+                const jsCode = `// Board configuration - replace the generateBoard function with this:
+generateBoard() {
+    const walls = new Set();
+    const boardWalls = ${JSON.stringify(wallArray, null, 8)};
+    boardWalls.forEach(wall => walls.add(wall));
+    return walls;
+}`;
+                
+                const output = document.getElementById('config-output');
+                output.value = jsCode;
+                output.select();
+                document.execCommand('copy');
+                alert('Configuration copied to clipboard!');
+            }
+
+            setMode(mode) {
+                this.currentMode = mode;
+                document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+                document.getElementById(`${mode}-mode`).classList.add('active');
+                
+                const targetInfo = document.getElementById('target-info');
+                if (mode === 'targets') {
+                    targetInfo.style.display = 'block';
+                } else {
+                    targetInfo.style.display = 'none';
+                }
+            }
+
+            toggleTarget(squareElement) {
+                const x = parseInt(squareElement.dataset.x);
+                const y = parseInt(squareElement.dataset.y);
+                const key = `${x},${y}`;
+                
+                // Don't allow targets in center area
+                if ((x === 7 || x === 8) && (y === 7 || y === 8)) {
+                    return;
+                }
+                
+                if (this.targets.has(key)) {
+                    // Remove existing target
+                    const targetElement = document.getElementById(`target-${x}-${y}`);
+                    if (targetElement) targetElement.remove();
+                    this.targets.delete(key);
+                } else {
+                    // Add new target
+                    this.targets.add(key);
+                    
+                    const targetElement = document.createElement('div');
+                    targetElement.id = `target-${x}-${y}`;
+                    targetElement.className = 'target-marker';
+                    targetElement.style.left = `${x * this.squareSize + 5}px`;
+                    targetElement.style.top = `${y * this.squareSize + 5}px`;
+                    targetElement.textContent = 'T';
+                    document.getElementById('grid').appendChild(targetElement);
+                }
+                
+                this.updateOutput();
+            }
+
+            clearAllTargets() {
+                this.targets.forEach(targetKey => {
+                    const [x, y] = targetKey.split(',');
+                    const element = document.getElementById(`target-${x}-${y}`);
+                    if (element) element.remove();
+                });
+                this.targets.clear();
+                this.updateOutput();
+            }
+
+            async saveCurrentConfiguration() {
+                try {
+                    let configId = document.getElementById('config-select').value;
+                    
+                    const configData = {
+                        walls: Array.from(this.walls),
+                        targets: Array.from(this.targets)
+                    };
+                    
+                    if (configId === 'new') {
+                        // Create new configuration
+                        const result = await apiService.createConfiguration(configData);
+                        configId = result.configId;
+                    } else {
+                        // Update existing configuration
+                        await apiService.updateConfiguration(configId, configData);
+                    }
+                    
+                    // Refresh configurations list
+                    this.configurations = await this.loadConfigurations();
+                    this.populateConfigSelect();
+                    document.getElementById('config-select').value = configId;
+                    this.currentConfigId = configId;
+                    
+                    alert(`Configuration ${configId} saved!`);
+                } catch (error) {
+                    console.error('Failed to save configuration:', error);
+                    alert('Failed to save configuration. Please try again.');
+                }
+            }
+
+            loadConfiguration(configId) {
+                if (configId === 'new') {
+                    this.clearAllWalls();
+                    this.clearAllTargets();
+                    this.currentConfigId = null;
+                    return;
+                }
+                
+                const config = this.configurations[configId];
+                if (!config) return;
+                
+                // Clear current state
+                this.clearAllWalls();
+                this.clearAllTargets();
+                
+                // Load walls
+                config.walls.forEach(wall => this.walls.add(wall));
+                this.updateVisualWalls();
+                
+                // Load targets
+                (config.targets || []).forEach(targetKey => {
+                    this.targets.add(targetKey);
+                    const [x, y] = targetKey.split(',').map(n => parseInt(n));
+                    
+                    const targetElement = document.createElement('div');
+                    targetElement.id = `target-${x}-${y}`;
+                    targetElement.className = 'target-marker';
+                    targetElement.style.left = `${x * this.squareSize + 5}px`;
+                    targetElement.style.top = `${y * this.squareSize + 5}px`;
+                    targetElement.textContent = 'T';
+                    document.getElementById('grid').appendChild(targetElement);
+                });
+                
+                this.currentConfigId = configId;
+                this.updateOutput();
+            }
+
+            async deleteCurrentConfiguration() {
+                const configId = document.getElementById('config-select').value;
+                if (configId === 'new') return;
+                
+                if (confirm(`Delete Configuration ${configId}?`)) {
+                    try {
+                        await apiService.deleteConfiguration(configId);
+                        
+                        // Refresh configurations list
+                        this.configurations = await this.loadConfigurations();
+                        this.populateConfigSelect();
+                        document.getElementById('config-select').value = 'new';
+                        this.loadConfiguration('new');
+                        
+                        alert(`Configuration ${configId} deleted!`);
+                    } catch (error) {
+                        console.error('Failed to delete configuration:', error);
+                        alert('Failed to delete configuration. Please try again.');
+                    }
+                }
+            }
+
+            testInGame() {
+                const configData = {
+                    walls: Array.from(this.walls),
+                    targets: Array.from(this.targets)
+                };
+                localStorage.setItem('customBoard', JSON.stringify(configData));
+                window.open('index.html', '_blank');
+            }
+        }
+
+        // Initialize the board configurator
+        document.addEventListener('DOMContentLoaded', () => {
+            new BoardConfigurator();
+        });
+    </script>
+    
+    <!-- AWS SDK -->
+    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1590.0.min.js"></script>
+    <script src="https://unpkg.com/amazon-cognito-identity-js@6.3.7/dist/amazon-cognito-identity.min.js"></script>
+    
+    <!-- Application Scripts -->
+    <script src="js/aws-config.js"></script>
+    <script src="js/auth-service.js"></script>
+    <script src="js/api-service.js"></script>
+</body>
+</html>
