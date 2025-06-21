@@ -5,6 +5,9 @@ class RobotPuzzleGame {
         this.moveCount = 0;
         this.targetColor = 'red';
         this.targetPosition = { x: 8, y: 8 };
+        this.currentRound = null;
+        this.moveHistory = [];
+        this.personalBest = null;
         
         this.dragState = {
             isDragging: false,
@@ -374,6 +377,16 @@ class RobotPuzzleGame {
             robotEl.style.transform = 'scale(1)';
         }, 200);
         
+        // Record the move
+        this.moveHistory.push({
+            robot: robotColor,
+            fromX: this.dragState.startPos.x,
+            fromY: this.dragState.startPos.y,
+            toX: newX,
+            toY: newY,
+            moveNumber: this.moveCount + 1
+        });
+        
         this.moveCount++;
         this.updateMoveCounter();
         this.checkWin();
@@ -382,9 +395,8 @@ class RobotPuzzleGame {
     checkWin() {
         const targetRobot = this.robots[this.targetColor];
         if (targetRobot.x === this.targetPosition.x && targetRobot.y === this.targetPosition.y) {
-            setTimeout(() => {
-                alert(`Congratulations! You solved it in ${this.moveCount} moves!`);
-                this.nextPuzzle();
+            setTimeout(async () => {
+                await this.onGameComplete();
             }, 500);
         }
     }
@@ -428,6 +440,15 @@ class RobotPuzzleGame {
         // Reset button
         document.getElementById('reset-btn').addEventListener('click', this.reset.bind(this));
         
+        // New Round button
+        document.getElementById('new-round-btn').addEventListener('click', this.loadNewRound.bind(this));
+        
+        // Board type selector
+        document.getElementById('board-type-selector').addEventListener('change', this.loadNewRound.bind(this));
+        
+        // Leaderboard button
+        document.getElementById('leaderboard-btn').addEventListener('click', this.showLeaderboard.bind(this));
+        
         // Sign out button
         document.getElementById('sign-out-btn').addEventListener('click', () => {
             authService.signOut();
@@ -437,6 +458,25 @@ class RobotPuzzleGame {
         // Wall editor button
         document.getElementById('editor-btn').addEventListener('click', () => {
             window.open('wall-editor.html', '_blank');
+        });
+
+        // Modal close handlers
+        document.querySelector('#leaderboard-modal .close').addEventListener('click', () => {
+            document.getElementById('leaderboard-modal').style.display = 'none';
+        });
+
+        // Completion modal handlers
+        document.getElementById('view-leaderboard-btn').addEventListener('click', this.showLeaderboard.bind(this));
+        document.getElementById('new-round-completion-btn').addEventListener('click', this.loadNewRound.bind(this));
+        document.getElementById('close-completion-btn').addEventListener('click', () => {
+            document.getElementById('completion-modal').style.display = 'none';
+        });
+
+        // Close modals when clicking outside
+        window.addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal')) {
+                e.target.style.display = 'none';
+            }
         });
     }
     
@@ -509,6 +549,7 @@ class RobotPuzzleGame {
         // Reset robots to initial positions only
         this.robots = JSON.parse(JSON.stringify(this.initialRobots));
         this.moveCount = 0;
+        this.moveHistory = [];
         
         // Clear board and rebuild with same layout
         document.querySelectorAll('.robot').forEach(robot => robot.remove());
@@ -531,6 +572,195 @@ class RobotPuzzleGame {
         this.updateMoveCounter();
         this.clearPathPreview();
     }
+
+    async loadNewRound() {
+        try {
+            const boardType = document.getElementById('board-type-selector').value;
+            const round = await apiService.getRandomRound(boardType);
+            
+            if (!round) {
+                alert('No rounds available for the selected board type.');
+                return;
+            }
+
+            await this.loadRound(round);
+        } catch (error) {
+            console.error('Failed to load new round:', error);
+            alert('Failed to load new round. Please try again.');
+        }
+    }
+
+    async loadRound(round) {
+        this.currentRound = round;
+        this.moveCount = 0;
+        this.moveHistory = [];
+        
+        // Set up the board from round data
+        this.walls = new Set(round.walls || []);
+        
+        // Set robot positions from round
+        this.robots = round.initialRobotPositions;
+        this.initialRobots = JSON.parse(JSON.stringify(this.robots));
+        
+        // Set target from round
+        const targetData = round.targetPositions;
+        this.targetColor = targetData.color;
+        this.targetPosition = { x: targetData.x, y: targetData.y };
+        
+        // Load personal best for this round
+        await this.loadPersonalBest();
+        
+        // Rebuild the UI
+        this.createBoard();
+        this.placeRobots();
+        this.updateTarget();
+        this.updateMoveCounter();
+        this.clearPathPreview();
+        
+        // Store round ID for score submission
+        document.getElementById('round-id').textContent = round.roundId;
+    }
+
+    async loadPersonalBest() {
+        if (!this.currentRound) return;
+        
+        try {
+            const userScores = await apiService.getUserScores();
+            const roundScore = userScores.find(score => score.roundId === this.currentRound.roundId);
+            
+            if (roundScore) {
+                this.personalBest = roundScore.moves;
+                document.getElementById('personal-best').textContent = `Personal Best: ${roundScore.moves} moves`;
+            } else {
+                this.personalBest = null;
+                document.getElementById('personal-best').textContent = '';
+            }
+        } catch (error) {
+            console.error('Failed to load personal best:', error);
+            this.personalBest = null;
+            document.getElementById('personal-best').textContent = '';
+        }
+    }
+
+    async onGameComplete() {
+        if (!this.currentRound) {
+            // Fallback to old behavior if no round is loaded
+            return;
+        }
+
+        try {
+            // Submit the score
+            const scoreData = {
+                moves: this.moveCount,
+                moveSequence: this.moveHistory
+            };
+
+            const result = await apiService.submitScore(this.currentRound.roundId, scoreData);
+            
+            // Show completion modal
+            this.showCompletionModal(result);
+            
+            // Update personal best display
+            await this.loadPersonalBest();
+            
+        } catch (error) {
+            console.error('Failed to submit score:', error);
+            alert('Congratulations on completing the puzzle! However, there was an error saving your score.');
+        }
+    }
+
+    showCompletionModal(scoreResult) {
+        const modal = document.getElementById('completion-modal');
+        const content = document.getElementById('completion-content');
+        
+        let statusMessage = '';
+        let isPersonalBest = false;
+        
+        if (scoreResult.personalBest) {
+            statusMessage = 'New Personal Best!';
+            isPersonalBest = true;
+        } else if (scoreResult.message.includes('not improved')) {
+            statusMessage = `Current best: ${scoreResult.currentBest} moves`;
+        } else {
+            statusMessage = 'Score submitted successfully!';
+        }
+        
+        content.innerHTML = `
+            <div class="completion-stats">
+                <div class="stat ${isPersonalBest ? 'personal-best-indicator' : ''}">
+                    <span class="stat-value">${this.moveCount}</span>
+                    <span class="stat-label">Moves</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-value">${this.personalBest || 'N/A'}</span>
+                    <span class="stat-label">Personal Best</span>
+                </div>
+            </div>
+            <p style="text-align: center; font-weight: bold; color: ${isPersonalBest ? '#4CAF50' : '#666'};">
+                ${statusMessage}
+            </p>
+        `;
+        
+        modal.style.display = 'block';
+    }
+
+    async showLeaderboard() {
+        if (!this.currentRound) {
+            alert('Complete a round first to view the leaderboard!');
+            return;
+        }
+
+        try {
+            const leaderboard = await apiService.getLeaderboard(this.currentRound.roundId);
+            this.displayLeaderboard(leaderboard);
+        } catch (error) {
+            console.error('Failed to load leaderboard:', error);
+            alert('Failed to load leaderboard. Please try again.');
+        }
+    }
+
+    displayLeaderboard(scores) {
+        const modal = document.getElementById('leaderboard-modal');
+        const content = document.getElementById('leaderboard-content');
+        
+        if (scores.length === 0) {
+            content.innerHTML = '<p>No scores recorded for this round yet. Be the first!</p>';
+        } else {
+            const currentUserId = authService.getCurrentUser().sub;
+            
+            let tableHTML = `
+                <table class="leaderboard-table">
+                    <thead>
+                        <tr>
+                            <th class="leaderboard-rank">Rank</th>
+                            <th>Player</th>
+                            <th class="leaderboard-moves">Moves</th>
+                            <th>Completed</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            scores.forEach((score, index) => {
+                const isCurrentUser = score.userId === currentUserId;
+                const completedDate = new Date(score.completedAt).toLocaleDateString();
+                
+                tableHTML += `
+                    <tr class="${isCurrentUser ? 'current-user' : ''}">
+                        <td class="leaderboard-rank">${index + 1}</td>
+                        <td>${isCurrentUser ? 'You' : 'Player'}</td>
+                        <td class="leaderboard-moves">${score.moves}</td>
+                        <td>${completedDate}</td>
+                    </tr>
+                `;
+            });
+            
+            tableHTML += '</tbody></table>';
+            content.innerHTML = tableHTML;
+        }
+        
+        modal.style.display = 'block';
+    }
 }
 
 // Initialize game when page loads
@@ -541,5 +771,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
     }
     
-    new RobotPuzzleGame();
+    const game = new RobotPuzzleGame();
+    
+    // Load initial round after game is created
+    setTimeout(async () => {
+        try {
+            await game.loadNewRound();
+        } catch (error) {
+            console.error('Failed to load initial round:', error);
+            // Fallback to default behavior if no rounds available
+        }
+    }, 1000);
 });

@@ -112,6 +112,60 @@ class ApiService {
             return null;
         }
     }
+
+    // Rounds API methods
+    async getBaselineRounds() {
+        return await this.makeRequest('/rounds/baseline');
+    }
+
+    async getUserSubmittedRounds() {
+        return await this.makeRequest('/rounds/user-submitted');
+    }
+
+    async createRound(configId, roundData) {
+        return await this.makeRequest(`/rounds/config/${configId}`, {
+            method: 'POST',
+            body: JSON.stringify(roundData)
+        });
+    }
+
+    // Scores API methods
+    async getLeaderboard(roundId) {
+        return await this.makeRequest(`/scores/${roundId}`);
+    }
+
+    async getUserScores() {
+        return await this.makeRequest('/scores');
+    }
+
+    async submitScore(roundId, scoreData) {
+        return await this.makeRequest(`/scores/${roundId}`, {
+            method: 'POST',
+            body: JSON.stringify(scoreData)
+        });
+    }
+
+    // Utility method to get a random round for gameplay
+    async getRandomRound(boardType = 'baseline') {
+        try {
+            let rounds;
+            if (boardType === 'baseline') {
+                rounds = await this.getBaselineRounds();
+            } else {
+                rounds = await this.getUserSubmittedRounds();
+            }
+            
+            if (rounds.length === 0) {
+                return null; // No rounds available
+            }
+
+            const randomRound = rounds[Math.floor(Math.random() * rounds.length)];
+            return randomRound;
+        } catch (error) {
+            console.error('Failed to get random round:', error);
+            return null;
+        }
+    }
 }
 
 // Create global API service instance

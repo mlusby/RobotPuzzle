@@ -96,11 +96,80 @@ Resources:
           AttributeType: S
         - AttributeName: configId
           AttributeType: S
+        - AttributeName: authorEmail
+          AttributeType: S
       KeySchema:
         - AttributeName: userId
           KeyType: HASH
         - AttributeName: configId
           KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: AuthorIndex
+          KeySchema:
+            - AttributeName: authorEmail
+              KeyType: HASH
+            - AttributeName: configId
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: false
+
+  # DynamoDB Table for Game Rounds
+  RoundsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${AppName}-${Environment}-rounds'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: roundId
+          AttributeType: S
+        - AttributeName: authorEmail
+          AttributeType: S
+      KeySchema:
+        - AttributeName: roundId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: AuthorIndex
+          KeySchema:
+            - AttributeName: authorEmail
+              KeyType: HASH
+            - AttributeName: roundId
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: false
+
+  # DynamoDB Table for User Scores
+  ScoresTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${AppName}-${Environment}-scores'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: roundId
+          AttributeType: S
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: moves
+          AttributeType: N
+      KeySchema:
+        - AttributeName: roundId
+          KeyType: HASH
+        - AttributeName: userId
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: LeaderboardIndex
+          KeySchema:
+            - AttributeName: roundId
+              KeyType: HASH
+            - AttributeName: moves
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
       TimeToLiveSpecification:
         AttributeName: ttl
         Enabled: false
@@ -132,7 +201,13 @@ Resources:
                   - dynamodb:UpdateItem
                   - dynamodb:DeleteItem
                   - dynamodb:Scan
-                Resource: !GetAtt BoardConfigurationsTable.Arn
+                Resource: 
+                  - !GetAtt BoardConfigurationsTable.Arn
+                  - !Sub '${BoardConfigurationsTable.Arn}/index/*'
+                  - !GetAtt RoundsTable.Arn
+                  - !Sub '${RoundsTable.Arn}/index/*'
+                  - !GetAtt ScoresTable.Arn
+                  - !Sub '${ScoresTable.Arn}/index/*'
 
   # API Gateway
   ApiGateway:
@@ -180,11 +255,12 @@ Resources:
               try:
                   http_method = event['httpMethod']
                   user_id = event['requestContext']['authorizer']['claims']['sub']
+                  user_email = event['requestContext']['authorizer']['claims']['email']
                   
                   if http_method == 'GET':
                       return get_configurations(user_id)
                   elif http_method == 'POST':
-                      return create_configuration(user_id, json.loads(event['body']))
+                      return create_configuration(user_id, user_email, json.loads(event['body']))
                   elif http_method == 'PUT':
                       config_id = event['pathParameters']['configId']
                       return update_configuration(user_id, config_id, json.loads(event['body']))
@@ -221,7 +297,7 @@ Resources:
                   'body': json.dumps(configurations, default=decimal_default)
               }
           
-          def create_configuration(user_id, data):
+          def create_configuration(user_id, user_email, data):
               # Find next available config ID
               response = table.query(KeyConditionExpression='userId = :userId',
                                    ExpressionAttributeValues={':userId': user_id})
@@ -234,6 +310,9 @@ Resources:
                   'configId': config_id,
                   'walls': data['walls'],
                   'targets': data['targets'],
+                  'authorEmail': user_email,
+                  'isBaseline': user_email == 'mlusby@gmail.com',
+                  'solved': False,
                   'createdAt': datetime.datetime.utcnow().isoformat()
               }
               
@@ -263,6 +342,283 @@ Resources:
                   'statusCode': 200,
                   'headers': {'Access-Control-Allow-Origin': '*'},
                   'body': json.dumps({'message': 'Deleted successfully'})
+              }
+          
+          def decimal_default(obj):
+              if isinstance(obj, Decimal):
+                  return float(obj)
+              raise TypeError
+
+  # Lambda Function for Rounds Management
+  RoundsFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AppName}-${Environment}-rounds'
+      Runtime: python3.9
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          ROUNDS_TABLE: !Ref RoundsTable
+          CONFIGS_TABLE: !Ref BoardConfigurationsTable
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import os
+          from decimal import Decimal
+          import uuid
+          import datetime
+          
+          dynamodb = boto3.resource('dynamodb')
+          rounds_table = dynamodb.Table(os.environ['ROUNDS_TABLE'])
+          configs_table = dynamodb.Table(os.environ['CONFIGS_TABLE'])
+          
+          def lambda_handler(event, context):
+              try:
+                  http_method = event['httpMethod']
+                  
+                  if http_method == 'GET':
+                      path = event.get('path', '')
+                      if '/baseline' in path:
+                          return get_baseline_rounds()
+                      elif '/user-submitted' in path:
+                          user_id = event['requestContext']['authorizer']['claims']['sub']
+                          return get_user_submitted_rounds(user_id)
+                      else:
+                          return get_all_rounds()
+                  elif http_method == 'POST':
+                      user_id = event['requestContext']['authorizer']['claims']['sub']
+                      user_email = event['requestContext']['authorizer']['claims']['email']
+                      config_id = event['pathParameters']['configId']
+                      return create_round(user_id, user_email, config_id, json.loads(event['body']))
+                  else:
+                      return {
+                          'statusCode': 405,
+                          'headers': {'Access-Control-Allow-Origin': '*'},
+                          'body': json.dumps({'error': 'Method not allowed'})
+                      }
+              except Exception as e:
+                  return {
+                      'statusCode': 500,
+                      'headers': {'Access-Control-Allow-Origin': '*'},
+                      'body': json.dumps({'error': str(e)})
+                  }
+          
+          def get_baseline_rounds():
+              # Get rounds created by mlusby@gmail.com
+              response = rounds_table.query(
+                  IndexName='AuthorIndex',
+                  KeyConditionExpression='authorEmail = :email',
+                  ExpressionAttributeValues={':email': 'mlusby@gmail.com'},
+                  FilterExpression='attribute_exists(isActive) AND isActive = :active',
+                  ExpressionAttributeValues={':email': 'mlusby@gmail.com', ':active': True}
+              )
+              return {
+                  'statusCode': 200,
+                  'headers': {'Access-Control-Allow-Origin': '*'},
+                  'body': json.dumps(response['Items'], default=decimal_default)
+              }
+          
+          def get_user_submitted_rounds(user_id):
+              # Get configurations that user has both authored and solved
+              user_configs = configs_table.query(
+                  KeyConditionExpression='userId = :userId',
+                  ExpressionAttributeValues={':userId': user_id},
+                  FilterExpression='solved = :solved',
+                  ExpressionAttributeValues={':userId': user_id, ':solved': True}
+              )
+              
+              # Get rounds for these configurations
+              rounds = []
+              for config in user_configs['Items']:
+                  config_rounds = rounds_table.query(
+                      IndexName='AuthorIndex',
+                      KeyConditionExpression='authorEmail = :email',
+                      ExpressionAttributeValues={':email': config['authorEmail']},
+                      FilterExpression='configId = :configId',
+                      ExpressionAttributeValues={':email': config['authorEmail'], ':configId': config['configId']}
+                  )
+                  rounds.extend(config_rounds['Items'])
+              
+              return {
+                  'statusCode': 200,
+                  'headers': {'Access-Control-Allow-Origin': '*'},
+                  'body': json.dumps(rounds, default=decimal_default)
+              }
+          
+          def get_all_rounds():
+              response = rounds_table.scan(
+                  FilterExpression='attribute_exists(isActive) AND isActive = :active',
+                  ExpressionAttributeValues={':active': True}
+              )
+              return {
+                  'statusCode': 200,
+                  'headers': {'Access-Control-Allow-Origin': '*'},
+                  'body': json.dumps(response['Items'], default=decimal_default)
+              }
+          
+          def create_round(user_id, user_email, config_id, data):
+              # Get the configuration
+              config_response = configs_table.get_item(Key={'userId': user_id, 'configId': config_id})
+              if 'Item' not in config_response:
+                  return {
+                      'statusCode': 404,
+                      'headers': {'Access-Control-Allow-Origin': '*'},
+                      'body': json.dumps({'error': 'Configuration not found'})
+                  }
+              
+              config = config_response['Item']
+              round_id = str(uuid.uuid4())
+              
+              round_item = {
+                  'roundId': round_id,
+                  'configId': config_id,
+                  'authorEmail': user_email,
+                  'initialRobotPositions': data['initialRobotPositions'],
+                  'targetPositions': data['targetPositions'],
+                  'walls': config['walls'],
+                  'targets': config['targets'],
+                  'isActive': True,
+                  'createdAt': datetime.datetime.utcnow().isoformat()
+              }
+              
+              rounds_table.put_item(Item=round_item)
+              return {
+                  'statusCode': 201,
+                  'headers': {'Access-Control-Allow-Origin': '*'},
+                  'body': json.dumps({'roundId': round_id})
+              }
+          
+          def decimal_default(obj):
+              if isinstance(obj, Decimal):
+                  return float(obj)
+              raise TypeError
+
+  # Lambda Function for Scores and Leaderboard
+  ScoresFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AppName}-${Environment}-scores'
+      Runtime: python3.9
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          SCORES_TABLE: !Ref ScoresTable
+          CONFIGS_TABLE: !Ref BoardConfigurationsTable
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import os
+          from decimal import Decimal
+          import datetime
+          
+          dynamodb = boto3.resource('dynamodb')
+          scores_table = dynamodb.Table(os.environ['SCORES_TABLE'])
+          configs_table = dynamodb.Table(os.environ['CONFIGS_TABLE'])
+          
+          def lambda_handler(event, context):
+              try:
+                  http_method = event['httpMethod']
+                  user_id = event['requestContext']['authorizer']['claims']['sub']
+                  
+                  if http_method == 'GET':
+                      round_id = event['pathParameters'].get('roundId')
+                      if round_id:
+                          return get_leaderboard(round_id)
+                      else:
+                          return get_user_scores(user_id)
+                  elif http_method == 'POST':
+                      round_id = event['pathParameters']['roundId']
+                      return submit_score(user_id, round_id, json.loads(event['body']))
+                  else:
+                      return {
+                          'statusCode': 405,
+                          'headers': {'Access-Control-Allow-Origin': '*'},
+                          'body': json.dumps({'error': 'Method not allowed'})
+                      }
+              except Exception as e:
+                  return {
+                      'statusCode': 500,
+                      'headers': {'Access-Control-Allow-Origin': '*'},
+                      'body': json.dumps({'error': str(e)})
+                  }
+          
+          def get_leaderboard(round_id):
+              response = scores_table.query(
+                  IndexName='LeaderboardIndex',
+                  KeyConditionExpression='roundId = :roundId',
+                  ExpressionAttributeValues={':roundId': round_id},
+                  ScanIndexForward=True  # Sort by moves ascending (best scores first)
+              )
+              return {
+                  'statusCode': 200,
+                  'headers': {'Access-Control-Allow-Origin': '*'},
+                  'body': json.dumps(response['Items'], default=decimal_default)
+              }
+          
+          def get_user_scores(user_id):
+              response = scores_table.scan(
+                  FilterExpression='userId = :userId',
+                  ExpressionAttributeValues={':userId': user_id}
+              )
+              return {
+                  'statusCode': 200,
+                  'headers': {'Access-Control-Allow-Origin': '*'},
+                  'body': json.dumps(response['Items'], default=decimal_default)
+              }
+          
+          def submit_score(user_id, round_id, data):
+              moves = data['moves']
+              move_sequence = data['moveSequence']
+              
+              # Check if user already has a score for this round
+              existing_response = scores_table.get_item(Key={'roundId': round_id, 'userId': user_id})
+              
+              attempt_count = 1
+              if 'Item' in existing_response:
+                  existing_score = existing_response['Item']
+                  attempt_count = existing_score.get('attemptCount', 0) + 1
+                  
+                  # Only update if new score is better (fewer moves)
+                  if moves >= existing_score['moves']:
+                      return {
+                          'statusCode': 200,
+                          'headers': {'Access-Control-Allow-Origin': '*'},
+                          'body': json.dumps({
+                              'message': 'Score not improved',
+                              'currentBest': int(existing_score['moves']),
+                              'submitted': moves
+                          })
+                      }
+              
+              # Check if this is the user's first completion of their own configuration
+              # Mark the configuration as solved if it's the author's first completion
+              user_email = event['requestContext']['authorizer']['claims']['email']
+              # We need to check if this round corresponds to a config authored by this user
+              # This would require getting round info first - simplified for now
+              
+              score_item = {
+                  'roundId': round_id,
+                  'userId': user_id,
+                  'moves': moves,
+                  'moveSequence': move_sequence,
+                  'completedAt': datetime.datetime.utcnow().isoformat(),
+                  'attemptCount': attempt_count
+              }
+              
+              scores_table.put_item(Item=score_item)
+              
+              return {
+                  'statusCode': 201,
+                  'headers': {'Access-Control-Allow-Origin': '*'},
+                  'body': json.dumps({
+                      'message': 'Score submitted successfully',
+                      'moves': moves,
+                      'personalBest': True if attempt_count == 1 else moves < existing_response['Item']['moves']
+                  })
               }
           
           def decimal_default(obj):
@@ -402,11 +758,305 @@ Resources:
             method.response.header.Access-Control-Allow-Methods: true
             method.response.header.Access-Control-Allow-Origin: true
 
+  # Rounds API Resources
+  RoundsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: rounds
+
+  BaselineRoundsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref RoundsResource
+      PathPart: baseline
+
+  UserSubmittedRoundsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref RoundsResource
+      PathPart: user-submitted
+
+  ConfigRoundsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref RoundsResource
+      PathPart: config
+
+  ConfigIdRoundsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref ConfigRoundsResource
+      PathPart: '{configId}'
+
+  # Scores API Resources
+  ScoresResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: scores
+
+  RoundScoresResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref ScoresResource
+      PathPart: '{roundId}'
+
+  # GET /rounds/baseline
+  GetBaselineRoundsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref BaselineRoundsResource
+      HttpMethod: GET
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref ApiAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RoundsFunction.Arn}/invocations'
+      MethodResponses:
+        - StatusCode: 200
+
+  # GET /rounds/user-submitted
+  GetUserSubmittedRoundsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref UserSubmittedRoundsResource
+      HttpMethod: GET
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref ApiAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RoundsFunction.Arn}/invocations'
+      MethodResponses:
+        - StatusCode: 200
+
+  # POST /rounds/config/{configId}
+  PostConfigRoundMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ConfigIdRoundsResource
+      HttpMethod: POST
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref ApiAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RoundsFunction.Arn}/invocations'
+      MethodResponses:
+        - StatusCode: 201
+
+  # GET /scores/{roundId} (leaderboard)
+  GetLeaderboardMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref RoundScoresResource
+      HttpMethod: GET
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref ApiAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ScoresFunction.Arn}/invocations'
+      MethodResponses:
+        - StatusCode: 200
+
+  # POST /scores/{roundId} (submit score)
+  PostScoreMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref RoundScoresResource
+      HttpMethod: POST
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref ApiAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ScoresFunction.Arn}/invocations'
+      MethodResponses:
+        - StatusCode: 201
+
+  # GET /scores (user scores)
+  GetUserScoresMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ScoresResource
+      HttpMethod: GET
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref ApiAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ScoresFunction.Arn}/invocations'
+      MethodResponses:
+        - StatusCode: 200
+
+  # OPTIONS methods for CORS
+  BaselineRoundsOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref BaselineRoundsResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: '200'
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+            ResponseTemplates:
+              application/json: ''
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
+  UserSubmittedRoundsOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref UserSubmittedRoundsResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: '200'
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+            ResponseTemplates:
+              application/json: ''
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
+  ConfigIdRoundsOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ConfigIdRoundsResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: '200'
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+            ResponseTemplates:
+              application/json: ''
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
+  ScoresOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ScoresResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: '200'
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+            ResponseTemplates:
+              application/json: ''
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
+  RoundScoresOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref RoundScoresResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: '200'
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+            ResponseTemplates:
+              application/json: ''
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
   # Lambda Permissions for API Gateway
   LambdaApiGatewayPermission:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !Ref BoardConfigurationsFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*'
+
+  RoundsLambdaApiGatewayPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref RoundsFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*'
+
+  ScoresLambdaApiGatewayPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ScoresFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*'
@@ -440,6 +1090,17 @@ Resources:
       - DeleteConfigurationMethod
       - ConfigurationsOptionsMethod
       - ConfigurationOptionsMethod
+      - GetBaselineRoundsMethod
+      - GetUserSubmittedRoundsMethod
+      - PostConfigRoundMethod
+      - GetLeaderboardMethod
+      - PostScoreMethod
+      - GetUserScoresMethod
+      - BaselineRoundsOptionsMethod
+      - UserSubmittedRoundsOptionsMethod
+      - ConfigIdRoundsOptionsMethod
+      - ScoresOptionsMethod
+      - RoundScoresOptionsMethod
       - UnauthorizedGatewayResponse
       - DefaultGatewayResponse
     Properties:

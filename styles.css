@@ -226,3 +226,191 @@ body {
         padding: 15px;
     }
 }
+
+/* Board Selector Styles */
+.board-selector {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.board-selector label {
+    font-weight: bold;
+    color: #555;
+}
+
+.board-selector select {
+    padding: 5px 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background-color: white;
+}
+
+/* Round Info Styles */
+.round-info {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+}
+
+.personal-best {
+    font-size: 0.9em;
+    color: #666;
+    font-style: italic;
+}
+
+/* Modal Styles */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(0, 0, 0, 0.5);
+}
+
+.modal-content {
+    background-color: #fefefe;
+    margin: 5% auto;
+    padding: 20px;
+    border: none;
+    border-radius: 10px;
+    width: 90%;
+    max-width: 600px;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.close {
+    color: #aaa;
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.close:hover,
+.close:focus {
+    color: #000;
+    text-decoration: none;
+}
+
+/* Leaderboard Styles */
+.leaderboard-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+}
+
+.leaderboard-table th,
+.leaderboard-table td {
+    padding: 8px 12px;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+}
+
+.leaderboard-table th {
+    background-color: #f5f5f5;
+    font-weight: bold;
+}
+
+.leaderboard-table tr:hover {
+    background-color: #f9f9f9;
+}
+
+.leaderboard-rank {
+    width: 60px;
+    text-align: center;
+    font-weight: bold;
+}
+
+.leaderboard-moves {
+    width: 80px;
+    text-align: center;
+}
+
+.current-user {
+    background-color: #e3f2fd !important;
+    font-weight: bold;
+}
+
+/* Completion Modal Styles */
+.completion-actions {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    margin-top: 20px;
+}
+
+.completion-stats {
+    text-align: center;
+    margin: 15px 0;
+}
+
+.completion-stats .stat {
+    display: inline-block;
+    margin: 0 15px;
+    padding: 10px;
+    background-color: #f5f5f5;
+    border-radius: 5px;
+}
+
+.completion-stats .stat-value {
+    display: block;
+    font-size: 1.5em;
+    font-weight: bold;
+    color: #2196F3;
+}
+
+.completion-stats .stat-label {
+    display: block;
+    font-size: 0.9em;
+    color: #666;
+    margin-top: 5px;
+}
+
+.personal-best-indicator {
+    background-color: #4CAF50 !important;
+    color: white;
+}
+
+/* Responsive adjustments for new elements */
+@media (max-width: 600px) {
+    .game-info {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .board-selector {
+        justify-content: center;
+        margin-bottom: 15px;
+    }
+    
+    .controls {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .modal-content {
+        margin: 10% auto;
+        width: 95%;
+        padding: 15px;
+    }
+    
+    .completion-actions {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .completion-stats .stat {
+        margin: 5px;
+        display: block;
+    }
+}
