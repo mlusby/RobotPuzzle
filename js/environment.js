@@ -62,7 +62,7 @@ class Environment {
                 mockUser: null
             },
             api: {
-                baseUrl: typeof AWS_CONFIG !== 'undefined' ? AWS_CONFIG.api.baseUrl : null,
+                baseUrl: this.getProductionBaseUrl(),
                 mock: false
             },
             storage: {
@@ -74,6 +74,16 @@ class Environment {
                 signOutText: 'Sign Out'
             }
         };
+    }
+
+    getProductionBaseUrl() {
+        // Try to get from AWS_CONFIG if available
+        if (typeof AWS_CONFIG !== 'undefined' && AWS_CONFIG.api && AWS_CONFIG.api.baseUrl) {
+            return AWS_CONFIG.api.baseUrl;
+        }
+        
+        // Fallback: wait for AWS_CONFIG to be loaded and return a getter
+        return null;
     }
 
     isDevelopment() {

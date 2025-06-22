@@ -5,11 +5,24 @@
 class ApiService {
     constructor() {
         this.isLocalDev = ENV.isDevelopment();
-        this.baseUrl = ENV.config.api.baseUrl;
         
         if (this.isLocalDev) {
+            this.baseUrl = ENV.config.api.baseUrl;
             this.initializeLocalStorage();
+        } else {
+            // For production, get the base URL dynamically
+            this.baseUrl = this.getProductionBaseUrl();
         }
+    }
+
+    getProductionBaseUrl() {
+        // Try to get from AWS_CONFIG, with fallback handling
+        if (typeof AWS_CONFIG !== 'undefined' && AWS_CONFIG.api && AWS_CONFIG.api.baseUrl) {
+            return AWS_CONFIG.api.baseUrl;
+        }
+        
+        // If AWS_CONFIG not loaded yet, return null and we'll handle it in makeRequest
+        return null;
     }
 
     initializeLocalStorage() {
@@ -114,6 +127,14 @@ class ApiService {
         
         if (!token) {
             throw new Error('No authentication token available');
+        }
+
+        // If baseUrl is null, try to get it again (AWS_CONFIG might be loaded now)
+        if (!this.baseUrl) {
+            this.baseUrl = this.getProductionBaseUrl();
+            if (!this.baseUrl) {
+                throw new Error('API base URL not available. AWS configuration may not be loaded yet.');
+            }
         }
 
         const defaultOptions = {
