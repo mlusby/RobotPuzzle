@@ -205,13 +205,31 @@ class RobotPuzzleGame {
     }
     
     placeRobots() {
+        // Clear existing robots first
+        document.querySelectorAll('.robot').forEach(robot => robot.remove());
+        
+        // Safety check for robots object
+        if (!this.robots) {
+            console.error('Robots object is not initialized');
+            return;
+        }
+        
         Object.values(this.robots).forEach(robot => {
+            if (!robot || typeof robot.x === 'undefined' || typeof robot.y === 'undefined') {
+                console.error('Invalid robot data:', robot);
+                return;
+            }
+            
             const robotEl = document.createElement('div');
             robotEl.className = `robot ${robot.color}`;
             robotEl.dataset.color = robot.color;
             
             const square = this.getSquareElement(robot.x, robot.y);
-            square.appendChild(robotEl);
+            if (square) {
+                square.appendChild(robotEl);
+            } else {
+                console.error('Square not found for robot at position:', robot.x, robot.y);
+            }
         });
     }
     
@@ -493,6 +511,12 @@ class RobotPuzzleGame {
         
         const robotColor = target.dataset.color;
         const robot = this.robots[robotColor];
+        
+        // Safety check for robot existence
+        if (!robot) {
+            console.error('Robot not found for color:', robotColor);
+            return;
+        }
         
         this.dragState = {
             isDragging: true,
