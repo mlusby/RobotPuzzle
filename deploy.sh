@@ -282,20 +282,33 @@ execute_pending_changeset() {
     
     log "${BLUE}🔄 Checking for pending changesets...${NC}"
     
-    # List changesets for the stack
-    local changesets=$(aws cloudformation list-change-sets \
+    # List all changesets for the stack
+    local changesets_output=$(aws cloudformation list-change-sets \
         --stack-name "$stack_name" \
-        --region "$REGION" \
-        --query 'Summaries[?Status==`CREATE_COMPLETE`].ChangeSetName' \
-        --output text 2>/dev/null)
+        --region "$REGION" 2>/dev/null)
     
-    if [[ -n "$changesets" ]]; then
-        local changeset_name=$(echo "$changesets" | head -n1)
-        log "${YELLOW}📋 Found pending changeset: $changeset_name${NC}"
+    if [[ $? -ne 0 ]]; then
+        log "${YELLOW}⚠️  Unable to list changesets${NC}"
+        return 1
+    fi
+    
+    # Check for changesets that failed due to no changes
+    local failed_no_changes=$(echo "$changesets_output" | jq -r '.Summaries[] | select(.Status == "FAILED" and (.StatusReason | contains("no changes") or contains("didn'\''t contain changes"))) | .ChangeSetName' 2>/dev/null | head -n1)
+    
+    if [[ -n "$failed_no_changes" ]]; then
+        log "${YELLOW}ℹ️  No infrastructure changes needed (changeset: $failed_no_changes)${NC}"
+        return 2  # Special return code for "no changes"
+    fi
+    
+    # Check for pending changesets ready to execute
+    local ready_changesets=$(echo "$changesets_output" | jq -r '.Summaries[] | select(.Status == "CREATE_COMPLETE") | .ChangeSetName' 2>/dev/null | head -n1)
+    
+    if [[ -n "$ready_changesets" ]]; then
+        log "${YELLOW}📋 Found pending changeset: $ready_changesets${NC}"
         log "${BLUE}⚡ Executing changeset...${NC}"
         
         if aws cloudformation execute-change-set \
-            --change-set-name "$changeset_name" \
+            --change-set-name "$ready_changesets" \
             --stack-name "$stack_name" \
             --region "$REGION" &>/dev/null; then
             log "${GREEN}✅ Changeset execution initiated${NC}"
@@ -347,10 +360,17 @@ deploy_stack() {
         sleep 10
         
         # Try to execute the changeset
-        if execute_pending_changeset "$STACK_NAME"; then
+        execute_pending_changeset "$STACK_NAME"
+        local changeset_result=$?
+        
+        if [[ $changeset_result -eq 0 ]]; then
             # Monitor the deployment progress after executing changeset
             monitor_stack_progress "$STACK_NAME" "UPDATE"
             return $?
+        elif [[ $changeset_result -eq 2 ]]; then
+            # No changes needed - this is success, not failure
+            log "${GREEN}✅ Infrastructure is already up to date${NC}"
+            return 0
         else
             log "${RED}❌ Failed to execute changeset automatically${NC}"
             log "${YELLOW}💡 Please execute the changeset manually in the AWS Console${NC}"
@@ -567,9 +587,12 @@ show_deployment_summary() {
     echo -e "   Region: $REGION"
     echo -e "   Timestamp: $(date)"
     
+    # Always show the production URL prominently
     if [[ -n "$WEBSITE_URL" ]]; then
-        echo -e "\n${GREEN}🌐 Your Robot Puzzle Game is live!${NC}"
-        echo -e "   Website URL: ${CYAN}$WEBSITE_URL${NC}"
+        echo -e "\n${GREEN}🌐 Production URL:${NC}"
+        echo -e "   ${CYAN}${WEBSITE_URL}${NC}"
+        echo -e "\n${GREEN}🚀 Your Robot Puzzle Game is live at:${NC}"
+        echo -e "   ${CYAN}$WEBSITE_URL${NC}"
     fi
     
     if [[ -n "$API_URL" ]]; then
@@ -618,31 +641,38 @@ main() {
     # Deployment phase
     if deploy_stack; then
         log "${GREEN}✅ Infrastructure deployment successful${NC}"
-        
-        # Configuration phase
-        if get_stack_outputs && update_aws_config; then
-            log "${GREEN}✅ Configuration update successful${NC}"
-            
-            # Upload phase
-            if upload_website_files; then
-                log "${GREEN}✅ Website upload successful${NC}"
-                
-                # Testing phase
-                test_deployment
-                
-                # Success summary
-                show_deployment_summary
-                exit 0
-            else
-                log "${RED}❌ Website upload failed${NC}"
-                exit 1
-            fi
-        else
-            log "${RED}❌ Configuration update failed${NC}"
-            exit 1
-        fi
     else
         log "${RED}❌ Infrastructure deployment failed${NC}"
+        exit 1
+    fi
+    
+    # Always try to get stack outputs and show the production URL
+    # This ensures we show the URL even when there are no infrastructure changes
+    if get_stack_outputs; then
+        log "${GREEN}✅ Stack outputs retrieved${NC}"
+        
+        # Update configuration if outputs are available
+        if update_aws_config; then
+            log "${GREEN}✅ Configuration update successful${NC}"
+        else
+            log "${YELLOW}⚠️  Configuration update failed, but proceeding${NC}"
+        fi
+        
+        # Upload phase
+        if upload_website_files; then
+            log "${GREEN}✅ Website upload successful${NC}"
+        else
+            log "${YELLOW}⚠️  Website upload failed, but proceeding${NC}"
+        fi
+        
+        # Testing phase
+        test_deployment
+        
+        # Always show summary with production URL
+        show_deployment_summary
+        exit 0
+    else
+        log "${RED}❌ Unable to retrieve stack outputs${NC}"
         exit 1
     fi
 }
