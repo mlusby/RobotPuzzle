@@ -460,6 +460,11 @@ class RobotPuzzleGame {
             window.open('wall-editor.html', '_blank');
         });
 
+        // Add debug handler for creating initial data if needed
+        if (window.location.search.includes('debug=init')) {
+            setTimeout(() => this.initializeBaselineData(), 3000);
+        }
+
         // Modal close handlers
         document.querySelector('#leaderboard-modal .close').addEventListener('click', () => {
             document.getElementById('leaderboard-modal').style.display = 'none';
@@ -579,14 +584,22 @@ class RobotPuzzleGame {
             const round = await apiService.getRandomRound(boardType);
             
             if (!round) {
-                alert('No rounds available for the selected board type.');
+                console.log(`No rounds available for board type: ${boardType}`);
+                // Don't show alert on initial load, just log it
+                if (this.currentRound) {
+                    alert('No rounds available for the selected board type.');
+                }
                 return;
             }
 
             await this.loadRound(round);
         } catch (error) {
             console.error('Failed to load new round:', error);
-            alert('Failed to load new round. Please try again.');
+            // Only show alert if this is a user-initiated action
+            if (this.currentRound) {
+                alert('Failed to load new round. Please try again.');
+            }
+            throw error; // Re-throw for caller to handle
         }
     }
 
@@ -761,6 +774,65 @@ class RobotPuzzleGame {
         
         modal.style.display = 'block';
     }
+
+    // Debug method to initialize baseline data
+    async initializeBaselineData() {
+        try {
+            console.log('🔧 Initializing baseline data...');
+            
+            // Create a few baseline configurations first
+            const baselineConfigs = [
+                {
+                    walls: [
+                        '7,7,left', '7,7,top', '8,7,top', '8,7,right',
+                        '7,8,left', '7,8,bottom', '8,8,bottom', '8,8,right',
+                        '2,3,bottom', '5,7,right', '10,12,left', '13,8,top'
+                    ],
+                    targets: ['8,8']
+                },
+                {
+                    walls: [
+                        '7,7,left', '7,7,top', '8,7,top', '8,7,right',
+                        '7,8,left', '7,8,bottom', '8,8,bottom', '8,8,right',
+                        '1,1,right', '14,14,left', '6,9,bottom', '11,4,top'
+                    ],
+                    targets: ['8,8']
+                }
+            ];
+
+            // Create configurations
+            for (let i = 0; i < baselineConfigs.length; i++) {
+                try {
+                    const result = await apiService.createConfiguration(baselineConfigs[i]);
+                    console.log(`✅ Created baseline configuration #${result.configId}`);
+                    
+                    // Create a round for this configuration
+                    const roundData = {
+                        initialRobotPositions: {
+                            silver: { x: 2, y: 3 },
+                            green: { x: 5, y: 7 },
+                            red: { x: 10, y: 12 },
+                            yellow: { x: 13, y: 8 },
+                            blue: { x: 8, y: 2 }
+                        },
+                        targetPositions: { color: 'red', x: 8, y: 8 }
+                    };
+                    
+                    const roundResult = await apiService.createRound(result.configId, roundData);
+                    console.log(`✅ Created baseline round ${roundResult.roundId}`);
+                    
+                } catch (error) {
+                    console.error(`❌ Failed to create baseline data ${i + 1}:`, error);
+                }
+            }
+            
+            console.log('🎉 Baseline data initialization complete!');
+            alert('Baseline data initialized! Refresh the page to see new rounds.');
+            
+        } catch (error) {
+            console.error('Failed to initialize baseline data:', error);
+        }
+    }
 }
 
 // Initialize game when page loads
@@ -773,13 +845,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     const game = new RobotPuzzleGame();
     
-    // Load initial round after game is created
+    // Try to load initial round after authentication is stable
     setTimeout(async () => {
         try {
+            // Wait for auth service to be fully ready
+            await new Promise(resolve => setTimeout(resolve, 2000));
             await game.loadNewRound();
         } catch (error) {
-            console.error('Failed to load initial round:', error);
-            // Fallback to default behavior if no rounds available
+            console.error('Failed to load initial round, using fallback:', error);
+            // Fallback to original behavior - just show the game without rounds
+            console.log('Game loaded with default configuration');
         }
     }, 1000);
 });
