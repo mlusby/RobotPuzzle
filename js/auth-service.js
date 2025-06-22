@@ -1,15 +1,28 @@
 /**
- * Authentication Service using AWS Cognito
+ * Unified Authentication Service
+ * Works in both local development and production environments
  */
 class AuthService {
     constructor() {
         this.userPool = null;
         this.currentUser = null;
         this.cognitoUser = null;
-        this.init();
+        this.isLocalDev = ENV.isDevelopment();
+        
+        if (this.isLocalDev) {
+            this.initializeLocal();
+        } else {
+            this.initializeCognito();
+        }
     }
 
-    init() {
+    initializeLocal() {
+        // Mock authentication for local development
+        this.mockUser = ENV.config.auth.mockUser;
+        console.log('🔧 Auth Service: Local development mode');
+    }
+
+    initializeCognito() {
         // Initialize Cognito User Pool
         this.userPool = new AmazonCognitoIdentity.CognitoUserPool({
             UserPoolId: AWS_CONFIG.cognito.userPoolId,
@@ -121,6 +134,12 @@ class AuthService {
     }
 
     signOut() {
+        if (this.isLocalDev) {
+            // In local dev, just reload the page
+            window.location.reload();
+            return;
+        }
+        
         if (this.cognitoUser) {
             this.cognitoUser.signOut();
         }
@@ -130,19 +149,34 @@ class AuthService {
     }
 
     getCurrentUser() {
+        if (this.isLocalDev) {
+            return this.mockUser;
+        }
         return this.currentUser;
     }
 
     getAuthToken() {
+        if (this.isLocalDev) {
+            return 'mock-jwt-token';
+        }
         return this.currentUser ? this.currentUser.token : null;
     }
 
     isAuthenticated() {
+        if (this.isLocalDev) {
+            return true; // Always authenticated in local dev
+        }
         return this.currentUser !== null;
     }
 
     refreshSession() {
         return new Promise((resolve, reject) => {
+            if (this.isLocalDev) {
+                // In local dev, always resolve successfully
+                resolve(true);
+                return;
+            }
+            
             if (!this.cognitoUser) {
                 reject(new Error('No user session'));
                 return;

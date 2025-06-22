@@ -20,6 +20,29 @@
             padding: 20px;
         }
 
+        /* Development banner styles */
+        .dev-banner {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(90deg, #ff6b6b, #4ecdc4);
+            color: white;
+            text-align: center;
+            padding: 5px;
+            font-size: 14px;
+            font-weight: bold;
+            z-index: 9999;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            display: none;
+        }
+        body.local-dev {
+            margin-top: 35px; /* Account for dev banner */
+        }
+        body.local-dev .dev-banner {
+            display: block;
+        }
+
         .editor-container {
             background: white;
             border-radius: 10px;
@@ -238,6 +261,10 @@
     </style>
 </head>
 <body>
+    <div class="dev-banner">
+        🔧 LOCAL DEVELOPMENT MODE - Testing Robot Puzzle Game Board Editor with Mock Data
+    </div>
+    
     <div class="editor-container">
         <div class="editor-header">
             <h1>Board Configuration</h1>
@@ -752,12 +779,26 @@ generateBoard() {
         });
     </script>
     
-    <!-- AWS SDK -->
-    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1590.0.min.js"></script>
-    <script src="https://unpkg.com/amazon-cognito-identity-js@6.3.7/dist/amazon-cognito-identity.min.js"></script>
+    <!-- Environment Detection (Always load first) -->
+    <script src="js/environment.js"></script>
     
-    <!-- Application Scripts -->
-    <script src="js/aws-config.js"></script>
+    <!-- Conditional Script Loading -->
+    <script>
+        // Load scripts based on environment
+        if (ENV.isProduction()) {
+            // Production: Load AWS SDK and config
+            document.write('<script src="https://sdk.amazonaws.com/js/aws-sdk-2.1590.0.min.js"><\/script>');
+            document.write('<script src="https://unpkg.com/amazon-cognito-identity-js@6.3.7/dist/amazon-cognito-identity.min.js"><\/script>');
+            document.write('<script src="js/aws-config.js"><\/script>');
+        }
+        
+        // Apply environment-specific body class
+        if (ENV.isDevelopment()) {
+            document.body.classList.add('local-dev');
+        }
+    </script>
+    
+    <!-- Application Scripts (Always load) -->
     <script src="js/auth-service.js"></script>
     <script src="js/api-service.js"></script>
 </body>
