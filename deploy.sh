@@ -349,7 +349,7 @@ deploy_stack() {
         # Try to execute the changeset
         if execute_pending_changeset "$STACK_NAME"; then
             # Monitor the deployment progress after executing changeset
-            monitor_stack_progress "$STACK_NAME" "CREATE"
+            monitor_stack_progress "$STACK_NAME" "UPDATE"
             return $?
         else
             log "${RED}❌ Failed to execute changeset automatically${NC}"
@@ -363,8 +363,14 @@ deploy_stack() {
         return 1
     fi
     
+    # Determine operation type based on stack existence
+    local operation="CREATE"
+    if aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$REGION" &>/dev/null; then
+        operation="UPDATE"
+    fi
+    
     # Monitor the deployment progress
-    monitor_stack_progress "$STACK_NAME" "CREATE"
+    monitor_stack_progress "$STACK_NAME" "$operation"
     return $?
 }
 
