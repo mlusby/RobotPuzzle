@@ -1083,6 +1083,7 @@ Resources:
   # API Gateway Deployment - Updated for CORS fix
   ApiDeployment:
     Type: AWS::ApiGateway::Deployment
+    Description: !Sub 'Deployment at ${AWS::StackName}-${AWS::Region}-${AWS::AccountId}'
     DependsOn:
       - GetConfigurationsMethod
       - PostConfigurationsMethod
