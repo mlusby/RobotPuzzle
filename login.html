@@ -266,12 +266,21 @@
         </div>
     </div>
 
-    <!-- AWS SDK -->
-    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1590.0.min.js"></script>
-    <script src="https://unpkg.com/amazon-cognito-identity-js@6.3.7/dist/amazon-cognito-identity.min.js"></script>
+    <!-- Environment Detection (Always load first) -->
+    <script src="js/environment.js"></script>
     
-    <!-- Application Scripts -->
-    <script src="js/aws-config.js"></script>
+    <!-- Conditional Script Loading -->
+    <script>
+        // Load scripts based on environment
+        if (ENV.isProduction()) {
+            // Production: Load AWS SDK and config
+            document.write('<script src="https://sdk.amazonaws.com/js/aws-sdk-2.1590.0.min.js"><\/script>');
+            document.write('<script src="https://unpkg.com/amazon-cognito-identity-js@6.3.7/dist/amazon-cognito-identity.min.js"><\/script>');
+            document.write('<script src="js/aws-config.js"><\/script>');
+        }
+    </script>
+    
+    <!-- Application Scripts (Always load) -->
     <script src="js/auth-service.js"></script>
     
     <script>
