@@ -138,6 +138,68 @@ class RobotPuzzleGame {
         }
     }
 
+    generateRandomRobotPositions() {
+        // Generate random starting positions for all robots
+        const availablePositions = [];
+        
+        // Generate all valid positions (avoiding center 2x2 formed by cutouts)
+        for (let x = 0; x < this.boardSize; x++) {
+            for (let y = 0; y < this.boardSize; y++) {
+                if (!((x === 7 || x === 8) && (y === 7 || y === 8))) {
+                    availablePositions.push({ x, y });
+                }
+            }
+        }
+        
+        // Shuffle and select 5 positions
+        const shuffled = availablePositions.sort(() => Math.random() - 0.5);
+        const colors = ['silver', 'green', 'red', 'yellow', 'blue'];
+        const robots = {};
+        
+        colors.forEach((color, index) => {
+            robots[color] = {
+                x: shuffled[index].x,
+                y: shuffled[index].y,
+                color: color
+            };
+        });
+        
+        return robots;
+    }
+
+    selectRandomTarget(configuration) {
+        const colors = ['silver', 'green', 'red', 'yellow', 'blue'];
+        const randomColor = colors[Math.floor(Math.random() * colors.length)];
+        
+        // If configuration has defined targets, use one of them
+        if (configuration.targets && configuration.targets.length > 0) {
+            const randomTargetKey = configuration.targets[Math.floor(Math.random() * configuration.targets.length)];
+            const [x, y] = randomTargetKey.split(',').map(n => parseInt(n));
+            
+            return {
+                color: randomColor,
+                x: x,
+                y: y
+            };
+        } else {
+            // Generate a random target position (avoiding center walls and invalid positions)
+            let targetX, targetY;
+            do {
+                targetX = Math.floor(Math.random() * this.boardSize);
+                targetY = Math.floor(Math.random() * this.boardSize);
+            } while (
+                // Avoid center walls
+                ((targetX === 7 || targetX === 8) && (targetY === 7 || targetY === 8))
+            );
+            
+            return {
+                color: randomColor,
+                x: targetX,
+                y: targetY
+            };
+        }
+    }
+
     initializeRobots() {
         const availablePositions = [];
         
@@ -266,6 +328,11 @@ class RobotPuzzleGame {
             );
         }
         
+        this.updateTargetUI();
+    }
+    
+    updateTargetUI() {
+        // Update the target UI without changing the target data
         document.getElementById('target-color').textContent = this.targetColor;
         document.getElementById('target-color').style.color = this.getColorHex(this.targetColor);
         
@@ -461,8 +528,13 @@ class RobotPuzzleGame {
         // New Round button
         document.getElementById('new-round-btn').addEventListener('click', this.loadNewRound.bind(this));
         
-        // Board type selector
-        document.getElementById('board-type-selector').addEventListener('change', this.loadNewRound.bind(this));
+        // Round type selector
+        const roundTypeSelector = document.getElementById('round-type-selector');
+        if (roundTypeSelector) {
+            roundTypeSelector.addEventListener('change', this.loadNewRound.bind(this));
+        } else {
+            console.error('Round type selector not found in DOM');
+        }
         
         // Leaderboard button
         document.getElementById('leaderboard-btn').addEventListener('click', this.showLeaderboard.bind(this));
@@ -604,19 +676,21 @@ class RobotPuzzleGame {
 
     async loadNewRound() {
         try {
-            const boardType = document.getElementById('board-type-selector').value;
-            const round = await apiService.getRandomRound(boardType);
-            
-            if (!round) {
-                console.log(`No rounds available for board type: ${boardType}`);
-                // Don't show alert on initial load, just log it
-                if (this.currentRound) {
-                    alert('No rounds available for the selected board type.');
-                }
+            const roundTypeSelector = document.getElementById('round-type-selector');
+            if (!roundTypeSelector) {
+                console.error('Round type selector not found, falling back to new round generation');
+                await this.generateNewRound();
                 return;
             }
-
-            await this.loadRound(round);
+            const roundType = roundTypeSelector.value;
+            
+            if (roundType === 'new') {
+                // Generate a new round from available configurations
+                await this.generateNewRound();
+            } else {
+                // Load a previously solved round
+                await this.loadSolvedRound();
+            }
         } catch (error) {
             console.error('Failed to load new round:', error);
             // Only show alert if this is a user-initiated action
@@ -624,6 +698,90 @@ class RobotPuzzleGame {
                 alert('Failed to load new round. Please try again.');
             }
             throw error; // Re-throw for caller to handle
+        }
+    }
+
+    async generateNewRound() {
+        try {
+            // Get available board configurations
+            const configurations = await apiService.getConfigurations();
+            const configIds = Object.keys(configurations);
+            
+            if (configIds.length === 0) {
+                console.log('No board configurations available. Please create some configurations first.');
+                if (this.currentRound) {
+                    alert('No board configurations available. Please create some configurations first.');
+                }
+                return;
+            }
+            
+            // Select a random configuration
+            const randomConfigId = configIds[Math.floor(Math.random() * configIds.length)];
+            const selectedConfig = configurations[randomConfigId];
+            
+            // Generate random robot starting positions
+            const robotPositions = this.generateRandomRobotPositions();
+            
+            // Select a random target from the configuration's targets, or generate one
+            const targetPosition = this.selectRandomTarget(selectedConfig);
+            
+            // Create a new round object (not saved to database yet)
+            const newRound = {
+                roundId: `temp-${Date.now()}`, // Temporary ID until solved
+                configId: randomConfigId,
+                configuration: selectedConfig,
+                initialRobotPositions: robotPositions,
+                targetPositions: targetPosition,
+                walls: selectedConfig.walls,
+                targets: selectedConfig.targets || [],
+                isTemporary: true // Flag to indicate this hasn't been saved yet
+            };
+            
+            await this.loadRound(newRound);
+            console.log('🎲 Generated new round from configuration', randomConfigId);
+        } catch (error) {
+            console.error('Failed to generate new round:', error);
+            throw error;
+        }
+    }
+
+    async loadSolvedRound() {
+        try {
+            console.log('🔍 Loading competitive rounds...');
+            
+            // Get a random round that has been solved (preserves original state)
+            const round = await apiService.getRandomSolvedRound();
+            
+            console.log('🔍 Solved rounds API response:', round);
+            
+            if (!round) {
+                console.log('❌ No solved rounds found in database');
+                if (this.currentRound) {
+                    alert('No competitive rounds available yet.\n\nComplete some puzzles in "Practice" mode first to create competitive rounds!\n\nThen switch back to "Competitive Rounds" to play those exact same puzzles.');
+                }
+                // Fall back to generating a new round for now
+                console.log('🔄 Falling back to practice mode');
+                await this.generateNewRound();
+                return;
+            }
+
+            // Mark as not temporary since this is an existing solved round
+            round.isTemporary = false;
+            
+            await this.loadRound(round);
+            
+            // Show notification that this is a competitive round
+            if (round.roundId) {
+                console.log('🏆 Competitive Round Loaded:', round.roundId);
+                console.log('🎯 This round preserves the exact puzzle state from when it was first solved');
+                console.log('🎮 Robot positions:', round.initialRobotPositions);
+                console.log('🎯 Target:', round.targetPositions);
+            }
+        } catch (error) {
+            console.error('❌ Failed to load competitive round:', error);
+            // Fall back to generating a new round
+            console.log('🔄 Falling back to practice mode due to error');
+            await this.generateNewRound();
         }
     }
 
@@ -639,7 +797,7 @@ class RobotPuzzleGame {
         this.robots = round.initialRobotPositions;
         this.initialRobots = JSON.parse(JSON.stringify(this.robots));
         
-        // Set target from round
+        // Set target from round (preserved state)
         const targetData = round.targetPositions;
         this.targetColor = targetData.color;
         this.targetPosition = { x: targetData.x, y: targetData.y };
@@ -650,7 +808,7 @@ class RobotPuzzleGame {
         // Rebuild the UI
         this.createBoard();
         this.placeRobots();
-        this.updateTarget();
+        this.updateTargetUI(); // Use updateTargetUI to preserve target data
         this.updateMoveCounter();
         this.clearPathPreview();
         
@@ -686,13 +844,42 @@ class RobotPuzzleGame {
         }
 
         try {
+            let roundIdToSubmit = this.currentRound.roundId;
+
+            // If this is a temporary round, save it to the database first
+            if (this.currentRound.isTemporary) {
+                console.log('💾 Saving temporary round to database...');
+                
+                const roundData = {
+                    initialRobotPositions: this.currentRound.initialRobotPositions,
+                    targetPositions: this.currentRound.targetPositions
+                };
+
+                try {
+                    const roundResult = await apiService.createRound(this.currentRound.configId, roundData);
+                    roundIdToSubmit = roundResult.roundId;
+                    
+                    // Update current round to no longer be temporary
+                    this.currentRound.roundId = roundIdToSubmit;
+                    this.currentRound.isTemporary = false;
+                    
+                    console.log('✅ Round saved with ID:', roundIdToSubmit);
+                } catch (roundError) {
+                    console.error('Failed to save round to database:', roundError);
+                    // Continue with temporary ID for local storage in development
+                    if (!ENV.isDevelopment()) {
+                        throw roundError;
+                    }
+                }
+            }
+
             // Submit the score
             const scoreData = {
                 moves: this.moveCount,
                 moveSequence: this.moveHistory
             };
 
-            const result = await apiService.submitScore(this.currentRound.roundId, scoreData);
+            const result = await apiService.submitScore(roundIdToSubmit, scoreData);
             
             // Show completion modal
             this.showCompletionModal(result);
@@ -743,12 +930,14 @@ class RobotPuzzleGame {
 
     async showLeaderboard() {
         if (!this.currentRound) {
-            alert('Complete a round first to view the leaderboard!');
+            alert('Load a round first to view the leaderboard!');
             return;
         }
 
         try {
+            console.log('📊 Loading leaderboard for round:', this.currentRound.roundId);
             const leaderboard = await apiService.getLeaderboard(this.currentRound.roundId);
+            console.log('📊 Leaderboard data:', leaderboard);
             this.displayLeaderboard(leaderboard);
         } catch (error) {
             console.error('Failed to load leaderboard:', error);
@@ -760,12 +949,16 @@ class RobotPuzzleGame {
         const modal = document.getElementById('leaderboard-modal');
         const content = document.getElementById('leaderboard-content');
         
+        const roundInfo = this.currentRound.isTemporary ? 
+            `<p><strong>Round:</strong> Practice Round (not competitive)</p>` :
+            `<p><strong>Round:</strong> ${this.currentRound.roundId} (Competitive)</p>`;
+        
         if (scores.length === 0) {
-            content.innerHTML = '<p>No scores recorded for this round yet. Be the first!</p>';
+            content.innerHTML = roundInfo + '<p>No scores recorded for this round yet. Be the first to compete!</p>';
         } else {
             const currentUserId = authService.getCurrentUser().sub;
             
-            let tableHTML = `
+            let tableHTML = roundInfo + `
                 <table class="leaderboard-table">
                     <thead>
                         <tr>

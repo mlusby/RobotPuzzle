@@ -198,6 +198,8 @@ class ApiService {
             return this.getBaselineRoundsLocal();
         } else if (endpoint.startsWith('/rounds/user-submitted')) {
             return this.getUserSubmittedRoundsLocal();
+        } else if (endpoint.startsWith('/rounds/solved')) {
+            return this.getSolvedRoundsLocal();
         } else if (endpoint.startsWith('/rounds/config/')) {
             const configId = endpoint.split('/').pop();
             return this.createRoundLocal(configId, JSON.parse(options.body));
@@ -309,6 +311,11 @@ class ApiService {
         });
     }
 
+    // Get rounds that have been solved (have associated scores)
+    async getSolvedRounds() {
+        return await this.makeRequest('/rounds/solved');
+    }
+
     // Utility method to get a random round for gameplay
     async getRandomRound(boardType = 'baseline') {
         try {
@@ -327,6 +334,23 @@ class ApiService {
             return randomRound;
         } catch (error) {
             console.error('Failed to get random round:', error);
+            return null;
+        }
+    }
+
+    // Get a random solved round (preserves original puzzle state)
+    async getRandomSolvedRound() {
+        try {
+            const solvedRounds = await this.getSolvedRounds();
+            
+            if (!solvedRounds || solvedRounds.length === 0) {
+                return null;
+            }
+
+            const randomRound = solvedRounds[Math.floor(Math.random() * solvedRounds.length)];
+            return randomRound;
+        } catch (error) {
+            console.error('Failed to get random solved round:', error);
             return null;
         }
     }
@@ -393,6 +417,21 @@ class ApiService {
         return rounds.filter(round => 
             solvedConfigs.some(([configId]) => configId === round.configId)
         );
+    }
+
+    async getSolvedRoundsLocal() {
+        // Get all rounds that have associated scores (i.e., have been solved)
+        const scores = JSON.parse(localStorage.getItem('robot-puzzle-scores') || '{}');
+        const rounds = JSON.parse(localStorage.getItem('robot-puzzle-rounds') || '[]');
+        
+        // Find rounds that have been solved (have scores)
+        const solvedRoundIds = new Set();
+        Object.values(scores).forEach(score => {
+            solvedRoundIds.add(score.roundId);
+        });
+        
+        // Return rounds that have been solved, preserving their original state
+        return rounds.filter(round => solvedRoundIds.has(round.roundId));
     }
 
     async createRoundLocal(configId, roundData) {

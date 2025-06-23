@@ -525,13 +525,21 @@ Resources:
                   user_id = event['requestContext']['authorizer']['claims']['sub']
                   
                   if http_method == 'GET':
-                      round_id = event['pathParameters'].get('roundId')
+                      path_params = event.get('pathParameters') or {}
+                      round_id = path_params.get('roundId')
                       if round_id:
                           return get_leaderboard(round_id)
                       else:
                           return get_user_scores(user_id)
                   elif http_method == 'POST':
-                      round_id = event['pathParameters']['roundId']
+                      path_params = event.get('pathParameters') or {}
+                      round_id = path_params.get('roundId')
+                      if not round_id:
+                          return {
+                              'statusCode': 400,
+                              'headers': {'Access-Control-Allow-Origin': '*'},
+                              'body': json.dumps({'error': 'roundId is required for score submission'})
+                          }
                       return submit_score(user_id, round_id, json.loads(event['body']))
                   else:
                       return {
@@ -780,6 +788,13 @@ Resources:
       ParentId: !Ref RoundsResource
       PathPart: user-submitted
 
+  SolvedRoundsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref RoundsResource
+      PathPart: solved
+
   ConfigRoundsResource:
     Type: AWS::ApiGateway::Resource
     Properties:
@@ -831,6 +846,22 @@ Resources:
     Properties:
       RestApiId: !Ref ApiGateway
       ResourceId: !Ref UserSubmittedRoundsResource
+      HttpMethod: GET
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref ApiAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RoundsFunction.Arn}/invocations'
+      MethodResponses:
+        - StatusCode: 200
+
+  # GET /rounds/solved
+  GetSolvedRoundsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref SolvedRoundsResource
       HttpMethod: GET
       AuthorizationType: COGNITO_USER_POOLS
       AuthorizerId: !Ref ApiAuthorizer
@@ -937,6 +968,32 @@ Resources:
     Properties:
       RestApiId: !Ref ApiGateway
       ResourceId: !Ref UserSubmittedRoundsResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: '200'
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+            ResponseTemplates:
+              application/json: ''
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
+  SolvedRoundsOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref SolvedRoundsResource
       HttpMethod: OPTIONS
       AuthorizationType: NONE
       Integration:
@@ -1083,7 +1140,6 @@ Resources:
   # API Gateway Deployment - Updated for CORS fix
   ApiDeployment:
     Type: AWS::ApiGateway::Deployment
-    Description: !Sub 'Deployment at ${AWS::StackName}-${AWS::Region}-${AWS::AccountId}'
     DependsOn:
       - GetConfigurationsMethod
       - PostConfigurationsMethod
@@ -1093,12 +1149,14 @@ Resources:
       - ConfigurationOptionsMethod
       - GetBaselineRoundsMethod
       - GetUserSubmittedRoundsMethod
+      - GetSolvedRoundsMethod
       - PostConfigRoundMethod
       - GetLeaderboardMethod
       - PostScoreMethod
       - GetUserScoresMethod
       - BaselineRoundsOptionsMethod
       - UserSubmittedRoundsOptionsMethod
+      - SolvedRoundsOptionsMethod
       - ConfigIdRoundsOptionsMethod
       - ScoresOptionsMethod
       - RoundScoresOptionsMethod
