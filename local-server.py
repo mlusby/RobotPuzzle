@@ -23,12 +23,6 @@ class LocalDevHandler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
     
     def do_GET(self):
-        # Redirect root to local development version
-        if self.path == '/' or self.path == '/index.html':
-            self.path = '/index-local.html'
-        elif self.path == '/wall-editor.html':
-            self.path = '/wall-editor-local.html'
-        
         super().do_GET()
 
 def main():

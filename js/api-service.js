@@ -177,12 +177,15 @@ class ApiService {
 
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+                console.log('Error response data:', errorData);
+                const errorMessage = (errorData && errorData.error) ? errorData.error : `HTTP error! status: ${response.status}`;
+                throw new Error(errorMessage);
             }
 
             return await response.json();
         } catch (error) {
             console.error('API request failed:', error);
+            console.error('Error details:', error.message, error.stack);
             throw error;
         }
     }
@@ -448,8 +451,8 @@ class ApiService {
             roundId,
             configId,
             authorEmail: 'mlusby@gmail.com',
-            initialRobotPositions: roundData.initialRobotPositions,
-            targetPositions: roundData.targetPositions,
+            initialRobotPositions: JSON.parse(JSON.stringify(roundData.initialRobotPositions)),
+            targetPositions: JSON.parse(JSON.stringify(roundData.targetPositions)),
             walls: config.walls,
             targets: config.targets,
             isActive: true,

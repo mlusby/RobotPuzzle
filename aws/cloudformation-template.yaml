@@ -540,7 +540,8 @@ Resources:
                               'headers': {'Access-Control-Allow-Origin': '*'},
                               'body': json.dumps({'error': 'roundId is required for score submission'})
                           }
-                      return submit_score(user_id, round_id, json.loads(event['body']))
+                      user_email = event['requestContext']['authorizer']['claims']['email']
+                      return submit_score(user_id, round_id, json.loads(event['body']), user_email)
                   else:
                       return {
                           'statusCode': 405,
@@ -578,7 +579,7 @@ Resources:
                   'body': json.dumps(response['Items'], default=decimal_default)
               }
           
-          def submit_score(user_id, round_id, data):
+          def submit_score(user_id, round_id, data, user_email):
               moves = data['moves']
               move_sequence = data['moveSequence']
               
@@ -604,7 +605,6 @@ Resources:
               
               # Check if this is the user's first completion of their own configuration
               # Mark the configuration as solved if it's the author's first completion
-              user_email = event['requestContext']['authorizer']['claims']['email']
               # We need to check if this round corresponds to a config authored by this user
               # This would require getting round info first - simplified for now
               
