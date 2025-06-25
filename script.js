@@ -851,7 +851,7 @@ class RobotPuzzleGame {
                 console.log('💾 Saving temporary round to database...');
                 
                 const roundData = {
-                    initialRobotPositions: this.currentRound.initialRobotPositions,
+                    initialRobotPositions: this.initialRobots,
                     targetPositions: this.currentRound.targetPositions
                 };
 

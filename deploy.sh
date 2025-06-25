@@ -489,6 +489,126 @@ EOF
     log "${CYAN}   Config file: js/aws-config.js${NC}"
 }
 
+# Function to get Lambda function name from CloudFormation stack
+get_lambda_function_name() {
+    local logical_id=$1
+    
+    aws cloudformation describe-stack-resources \
+        --stack-name "$STACK_NAME" \
+        --region "$REGION" \
+        --logical-resource-id "$logical_id" \
+        --query 'StackResources[0].PhysicalResourceId' \
+        --output text 2>/dev/null
+}
+
+# Function to package and deploy a Lambda function
+deploy_lambda_function() {
+    local function_file=$1
+    local logical_id=$2
+    local function_description=$3
+    
+    log "${BLUE}📦 Deploying $function_description...${NC}"
+    
+    # Check if function file exists
+    if [[ ! -f "$function_file" ]]; then
+        log "${YELLOW}⚠️  Lambda function file not found: $function_file${NC}"
+        return 1
+    fi
+    
+    # Get the actual function name from CloudFormation
+    local function_name=$(get_lambda_function_name "$logical_id")
+    
+    if [[ -z "$function_name" || "$function_name" == "None" ]]; then
+        log "${YELLOW}⚠️  Could not find Lambda function $logical_id in stack${NC}"
+        return 1
+    fi
+    
+    log "${CYAN}   Function name: $function_name${NC}"
+    
+    # Create temporary directory for packaging
+    local temp_dir=$(mktemp -d)
+    local zip_file="${temp_dir}/function.zip"
+    
+    # Copy function file and create zip
+    cp "$function_file" "${temp_dir}/index.py"
+    
+    # Package the function
+    (cd "$temp_dir" && zip -q "$zip_file" index.py)
+    
+    if [[ ! -f "$zip_file" ]]; then
+        log "${RED}❌ Failed to create deployment package${NC}"
+        rm -rf "$temp_dir"
+        return 1
+    fi
+    
+    log "${CYAN}   Package created: $(du -h "$zip_file" | cut -f1)${NC}"
+    
+    # Deploy the function
+    log "${CYAN}   Updating Lambda function code...${NC}"
+    
+    local update_result=$(aws lambda update-function-code \
+        --function-name "$function_name" \
+        --zip-file "fileb://$zip_file" \
+        --region "$REGION" \
+        --output json 2>&1)
+    
+    if [[ $? -eq 0 ]]; then
+        log "${GREEN}✅ Successfully deployed $function_description${NC}"
+        
+        # Extract key info from the result
+        local last_modified=$(echo "$update_result" | jq -r '.LastModified // "Unknown"' 2>/dev/null || echo "Unknown")
+        local code_size=$(echo "$update_result" | jq -r '.CodeSize // "Unknown"' 2>/dev/null || echo "Unknown")
+        
+        log "${CYAN}   Last modified: $last_modified${NC}"
+        log "${CYAN}   Code size: $code_size bytes${NC}"
+    else
+        log "${YELLOW}⚠️  Failed to deploy $function_description${NC}"
+        log "${CYAN}   Error: $update_result${NC}"
+        rm -rf "$temp_dir"
+        return 1
+    fi
+    
+    # Clean up
+    rm -rf "$temp_dir"
+    
+    return 0
+}
+
+# Function to deploy all Lambda functions
+deploy_lambda_functions() {
+    log "${BLUE}🔧 Deploying Lambda functions...${NC}"
+    
+    local success_count=0
+    local total_count=0
+    
+    # Deploy scores function if it exists
+    if [[ -f "aws/lambda-functions/scores.py" ]]; then
+        ((total_count++))
+        if deploy_lambda_function "aws/lambda-functions/scores.py" "ScoresFunction" "Scores Lambda Function"; then
+            ((success_count++))
+        fi
+    fi
+    
+    # Deploy board configurations function if it exists
+    if [[ -f "aws/lambda-functions/board-configurations.py" ]]; then
+        ((total_count++))
+        if deploy_lambda_function "aws/lambda-functions/board-configurations.py" "BoardConfigurationsFunction" "Board Configurations Lambda Function"; then
+            ((success_count++))
+        fi
+    fi
+    
+    if [[ $total_count -eq 0 ]]; then
+        log "${YELLOW}⚠️  No Lambda function files found to deploy${NC}"
+        return 1
+    elif [[ $success_count -eq $total_count ]]; then
+        log "${GREEN}✅ All Lambda functions deployed successfully ($success_count/$total_count)${NC}"
+        return 0
+    else
+        log "${YELLOW}⚠️  Some Lambda functions failed to deploy ($success_count/$total_count)${NC}"
+        return 1
+    fi
+}
+
 # Function to upload website files with progress
 upload_website_files() {
     log "${BLUE}📤 Uploading website files to S3...${NC}"
@@ -656,6 +776,13 @@ main() {
             log "${GREEN}✅ Configuration update successful${NC}"
         else
             log "${YELLOW}⚠️  Configuration update failed, but proceeding${NC}"
+        fi
+        
+        # Lambda deployment phase
+        if deploy_lambda_functions; then
+            log "${GREEN}✅ Lambda function deployment successful${NC}"
+        else
+            log "${YELLOW}⚠️  Lambda function deployment failed, but proceeding${NC}"
         fi
         
         # Upload phase
