@@ -237,6 +237,14 @@ class RobotPuzzleGame {
         this.updateTarget();
         this.setupEventListeners();
         this.updateMoveCounter();
+        await this.displayUserInfo();
+        this.leaderboardCurrentPage = 0;
+        this.leaderboardPageSize = 5;
+        
+        // Check if user needs to set username
+        setTimeout(() => {
+            this.checkAndPromptUsername();
+        }, 2000);
     }
     
     createBoard() {
@@ -335,6 +343,11 @@ class RobotPuzzleGame {
         // Update the target UI without changing the target data
         document.getElementById('target-color').textContent = this.targetColor;
         document.getElementById('target-color').style.color = this.getColorHex(this.targetColor);
+        
+        // Update target preview indicator
+        const targetIndicator = document.getElementById('target-indicator');
+        targetIndicator.style.backgroundColor = this.getColorHex(this.targetColor);
+        targetIndicator.style.borderColor = this.getColorHex(this.targetColor);
         
         const targetSquare = document.getElementById('target-square');
         const targetGridSquare = this.getSquareElement(this.targetPosition.x, this.targetPosition.y);
@@ -531,13 +544,30 @@ class RobotPuzzleGame {
         // Round type selector
         const roundTypeSelector = document.getElementById('round-type-selector');
         if (roundTypeSelector) {
-            roundTypeSelector.addEventListener('change', this.loadNewRound.bind(this));
+            roundTypeSelector.addEventListener('change', this.handleRoundTypeChange.bind(this));
         } else {
             console.error('Round type selector not found in DOM');
         }
         
-        // Leaderboard button
-        document.getElementById('leaderboard-btn').addEventListener('click', this.showLeaderboard.bind(this));
+        // Competitive rounds manager
+        document.getElementById('competitive-rounds-selector').addEventListener('change', this.loadSelectedCompetitiveRound.bind(this));
+        document.getElementById('delete-round-btn').addEventListener('click', this.deleteCompetitiveRound.bind(this));
+        
+        // Leaderboard pagination
+        document.getElementById('prev-leaderboard-btn').addEventListener('click', this.previousLeaderboardPage.bind(this));
+        document.getElementById('next-leaderboard-btn').addEventListener('click', this.nextLeaderboardPage.bind(this));
+        
+        // Username modal handlers
+        document.getElementById('save-username-btn').addEventListener('click', this.saveUsername.bind(this));
+        document.getElementById('skip-username-btn').addEventListener('click', this.skipUsername.bind(this));
+        document.getElementById('username-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                this.saveUsername();
+            }
+        });
+        
+        // User email click to edit username
+        document.getElementById('user-email').addEventListener('click', this.editUsername.bind(this));
         
         // Sign out button
         document.getElementById('sign-out-btn').addEventListener('click', () => {
@@ -561,7 +591,6 @@ class RobotPuzzleGame {
         });
 
         // Completion modal handlers
-        document.getElementById('view-leaderboard-btn').addEventListener('click', this.showLeaderboard.bind(this));
         document.getElementById('new-round-completion-btn').addEventListener('click', this.loadNewRound.bind(this));
         document.getElementById('close-completion-btn').addEventListener('click', () => {
             document.getElementById('completion-modal').style.display = 'none';
@@ -814,6 +843,11 @@ class RobotPuzzleGame {
         
         // Store round ID for score submission
         document.getElementById('round-id').textContent = round.roundId;
+        
+        // Load leaderboard for this round
+        setTimeout(() => {
+            this.showLeaderboard();
+        }, 500);
     }
 
     async loadPersonalBest() {
@@ -887,6 +921,11 @@ class RobotPuzzleGame {
             // Update personal best display
             await this.loadPersonalBest();
             
+            // Refresh leaderboard
+            setTimeout(() => {
+                this.showLeaderboard();
+            }, 1000);
+            
         } catch (error) {
             console.error('Failed to submit score:', error);
             alert('Congratulations on completing the puzzle! However, there was an error saving your score.');
@@ -930,7 +969,8 @@ class RobotPuzzleGame {
 
     async showLeaderboard() {
         if (!this.currentRound) {
-            alert('Load a round first to view the leaderboard!');
+            const display = document.getElementById('leaderboard-display');
+            display.innerHTML = '<p>Load a round first to view the leaderboard!</p>';
             return;
         }
 
@@ -938,10 +978,11 @@ class RobotPuzzleGame {
             console.log('📊 Loading leaderboard for round:', this.currentRound.roundId);
             const leaderboard = await apiService.getLeaderboard(this.currentRound.roundId);
             console.log('📊 Leaderboard data:', leaderboard);
-            this.displayLeaderboard(leaderboard);
+            this.displayInlineLeaderboard(leaderboard);
         } catch (error) {
             console.error('Failed to load leaderboard:', error);
-            alert('Failed to load leaderboard. Please try again.');
+            const display = document.getElementById('leaderboard-display');
+            display.innerHTML = '<p>Failed to load leaderboard. Please try again.</p>';
         }
     }
 
@@ -1048,6 +1089,295 @@ class RobotPuzzleGame {
             
         } catch (error) {
             console.error('Failed to initialize baseline data:', error);
+        }
+    }
+
+    // New methods for enhanced functionality
+    async displayUserInfo() {
+        const userEmailElement = document.getElementById('user-email');
+        const user = authService.getCurrentUser();
+        if (user && user.email) {
+            try {
+                const userProfile = await apiService.getUserProfile();
+                const displayText = userProfile && userProfile.username 
+                    ? `${userProfile.username} (${user.email})`
+                    : user.email;
+                userEmailElement.textContent = displayText;
+            } catch (error) {
+                console.error('Failed to load user profile:', error);
+                userEmailElement.textContent = user.email;
+            }
+        }
+    }
+
+    handleRoundTypeChange() {
+        const roundType = document.getElementById('round-type-selector').value;
+        const competitiveManager = document.getElementById('competitive-rounds-manager');
+        
+        if (roundType === 'solved') {
+            competitiveManager.style.display = 'flex';
+            this.loadCompetitiveRounds();
+        } else {
+            competitiveManager.style.display = 'none';
+        }
+        
+        this.loadNewRound();
+    }
+
+    async loadCompetitiveRounds() {
+        try {
+            const rounds = await apiService.getUserCompletedRounds();
+            const selector = document.getElementById('competitive-rounds-selector');
+            
+            // Clear existing options except the first one
+            selector.innerHTML = '<option value="">Select a round...</option>';
+            
+            if (rounds && rounds.length > 0) {
+                rounds.forEach(round => {
+                    const option = document.createElement('option');
+                    option.value = round.roundId;
+                    option.textContent = `Round ${round.roundId} (${round.moves} moves)`;
+                    selector.appendChild(option);
+                });
+            }
+        } catch (error) {
+            console.error('Failed to load competitive rounds:', error);
+        }
+    }
+
+    async loadSelectedCompetitiveRound() {
+        const roundId = document.getElementById('competitive-rounds-selector').value;
+        if (!roundId) return;
+        
+        try {
+            const round = await apiService.getRound(roundId);
+            if (round) {
+                await this.loadRound(round);
+            }
+        } catch (error) {
+            console.error('Failed to load selected round:', error);
+            alert('Failed to load the selected round.');
+        }
+    }
+
+    async deleteCompetitiveRound() {
+        const roundId = document.getElementById('competitive-rounds-selector').value;
+        if (!roundId) {
+            alert('Please select a round to delete.');
+            return;
+        }
+        
+        if (!confirm('Are you sure you want to delete this competitive round? This action cannot be undone.')) {
+            return;
+        }
+        
+        try {
+            await apiService.deleteRound(roundId);
+            alert('Round deleted successfully.');
+            this.loadCompetitiveRounds(); // Refresh the list
+            this.loadNewRound(); // Load a new round
+        } catch (error) {
+            console.error('Failed to delete round:', error);
+            alert('Failed to delete the round.');
+        }
+    }
+
+    async displayInlineLeaderboard(scores) {
+        const display = document.getElementById('leaderboard-display');
+        const pagination = document.getElementById('leaderboard-pagination');
+        
+        if (!scores || scores.length === 0) {
+            display.innerHTML = '<p>No scores recorded for this round yet. Be the first to compete!</p>';
+            pagination.style.display = 'none';
+            return;
+        }
+        
+        const totalPages = Math.ceil(scores.length / this.leaderboardPageSize);
+        const startIndex = this.leaderboardCurrentPage * this.leaderboardPageSize;
+        const endIndex = Math.min(startIndex + this.leaderboardPageSize, scores.length);
+        const pageScores = scores.slice(startIndex, endIndex);
+        
+        const currentUserId = authService.getCurrentUser().sub;
+        
+        // Fetch current usernames for all users in this page
+        const userProfiles = await this.fetchCurrentUsernames(pageScores.map(score => score.userId));
+        
+        let tableHTML = `
+            <div class="leaderboard-compact">
+                <table class="leaderboard-table">
+                    <thead>
+                        <tr>
+                            <th class="leaderboard-rank">Rank</th>
+                            <th>Player</th>
+                            <th class="leaderboard-moves">Moves</th>
+                            <th>Completed</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        
+        pageScores.forEach((score, index) => {
+            const globalRank = startIndex + index + 1;
+            const isCurrentUser = score.userId === currentUserId;
+            const completedDate = new Date(score.completedAt).toLocaleDateString();
+            
+            // Use current username from profiles, not historical username from score
+            let playerName = 'Player';
+            const currentProfile = userProfiles[score.userId];
+            if (currentProfile?.username) {
+                playerName = currentProfile.username;
+            } else if (isCurrentUser) {
+                playerName = 'You';
+            }
+            
+            tableHTML += `
+                <tr class="${isCurrentUser ? 'current-user' : ''}">
+                    <td class="leaderboard-rank">${globalRank}</td>
+                    <td>${playerName}</td>
+                    <td class="leaderboard-moves">${score.moves}</td>
+                    <td>${completedDate}</td>
+                </tr>
+            `;
+        });
+        
+        tableHTML += '</tbody></table></div>';
+        display.innerHTML = tableHTML;
+        
+        // Update pagination
+        if (totalPages > 1) {
+            pagination.style.display = 'flex';
+            document.getElementById('leaderboard-page-info').textContent = `Page ${this.leaderboardCurrentPage + 1} of ${totalPages}`;
+            document.getElementById('prev-leaderboard-btn').disabled = this.leaderboardCurrentPage === 0;
+            document.getElementById('next-leaderboard-btn').disabled = this.leaderboardCurrentPage >= totalPages - 1;
+        } else {
+            pagination.style.display = 'none';
+        }
+    }
+
+    previousLeaderboardPage() {
+        if (this.leaderboardCurrentPage > 0) {
+            this.leaderboardCurrentPage--;
+            this.showLeaderboard();
+        }
+    }
+
+    nextLeaderboardPage() {
+        this.leaderboardCurrentPage++;
+        this.showLeaderboard();
+    }
+
+    // Username management methods
+    async checkAndPromptUsername() {
+        const user = authService.getCurrentUser();
+        if (!user) return;
+        
+        try {
+            const userProfile = await apiService.getUserProfile();
+            if (!userProfile || !userProfile.username) {
+                this.showUsernameModal();
+            }
+        } catch (error) {
+            console.error('Failed to check user profile:', error);
+            // If we can't check, prompt for username anyway
+            this.showUsernameModal();
+        }
+    }
+
+    showUsernameModal() {
+        const modal = document.getElementById('username-modal');
+        modal.style.display = 'block';
+        document.getElementById('username-input').focus();
+    }
+
+    async saveUsername() {
+        const username = document.getElementById('username-input').value.trim();
+        
+        if (!username) {
+            alert('Please enter a username.');
+            return;
+        }
+        
+        if (username.length < 3) {
+            alert('Username must be at least 3 characters long.');
+            return;
+        }
+        
+        try {
+            const userProfile = await apiService.getUserProfile();
+            const isEditing = userProfile?.username;
+            
+            await apiService.updateUserProfile({ username: username });
+            document.getElementById('username-modal').style.display = 'none';
+            await this.displayUserInfo(); // Refresh user info display
+            
+            const message = isEditing ? 'Username updated successfully!' : 'Username saved successfully!';
+            alert(message);
+        } catch (error) {
+            console.error('Failed to save username:', error);
+            alert('Failed to save username. Please try again.');
+        }
+    }
+
+    skipUsername() {
+        document.getElementById('username-modal').style.display = 'none';
+    }
+
+    async editUsername() {
+        try {
+            const userProfile = await apiService.getUserProfile();
+            const currentUsername = userProfile?.username || '';
+            
+            // Pre-populate the input with current username
+            document.getElementById('username-input').value = currentUsername;
+            
+            // Update modal title for editing context
+            const modalTitle = document.querySelector('#username-modal h2');
+            modalTitle.textContent = currentUsername ? 'Edit Your Username' : 'Choose Your Username';
+            
+            this.showUsernameModal();
+        } catch (error) {
+            console.error('Failed to load current username:', error);
+            this.showUsernameModal();
+        }
+    }
+
+    async fetchCurrentUsernames(userIds) {
+        // For local development, we only have one user profile
+        if (ENV.isDevelopment()) {
+            const profiles = {};
+            for (const userId of userIds) {
+                if (userId === 'local-user-123') {
+                    try {
+                        profiles[userId] = await apiService.getUserProfileLocal();
+                    } catch (error) {
+                        console.error('Failed to fetch profile for local user:', error);
+                        profiles[userId] = null;
+                    }
+                } else {
+                    profiles[userId] = null; // Unknown user in local dev
+                }
+            }
+            return profiles;
+        } else {
+            // In production, we'd need an API endpoint to fetch multiple user profiles
+            // For now, return empty profiles for non-current users
+            const currentUserId = authService.getCurrentUser().sub;
+            const profiles = {};
+            
+            for (const userId of userIds) {
+                if (userId === currentUserId) {
+                    try {
+                        profiles[userId] = await apiService.getUserProfile();
+                    } catch (error) {
+                        console.error('Failed to fetch current user profile:', error);
+                        profiles[userId] = null;
+                    }
+                } else {
+                    // TODO: Implement bulk user profile fetching API
+                    profiles[userId] = null;
+                }
+            }
+            return profiles;
         }
     }
 }

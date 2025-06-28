@@ -6,7 +6,7 @@
 set -e
 
 # Configuration
-STACK_NAME="robot-puzzle-game-dev"
+STACK_NAME="robot-puzzle-game-prod"
 REGION="us-east-1"
 CHECK_INTERVAL=10  # Check every 10 seconds for interactive use
 

@@ -227,6 +227,21 @@ class ApiService {
             } else if (method === 'DELETE') {
                 return this.deleteConfigurationLocal(configId);
             }
+        } else if (endpoint === '/user/profile') {
+            if (method === 'GET') {
+                return this.getUserProfileLocal();
+            } else if (method === 'PUT') {
+                return this.updateUserProfileLocal(JSON.parse(options.body));
+            }
+        } else if (endpoint === '/rounds/user-completed') {
+            return this.getUserCompletedRoundsLocal();
+        } else if (endpoint.startsWith('/rounds/') && !endpoint.includes('/config/')) {
+            const roundId = endpoint.split('/').pop();
+            if (method === 'GET') {
+                return this.getRoundLocal(roundId);
+            } else if (method === 'DELETE') {
+                return this.deleteRoundLocal(roundId);
+            }
         }
 
         throw new Error(`Unhandled local API endpoint: ${method} ${endpoint}`);
@@ -480,6 +495,9 @@ class ApiService {
         const scoreKey = `${roundId}-local-user-123`;
         const existingScore = scores[scoreKey];
         
+        // Get user profile for username
+        const userProfile = await this.getUserProfileLocal();
+        
         let isPersonalBest = false;
         let currentBest = null;
         
@@ -500,6 +518,7 @@ class ApiService {
         scores[scoreKey] = {
             roundId,
             userId: 'local-user-123',
+            username: userProfile?.username || null,
             moves: scoreData.moves,
             moveSequence: scoreData.moveSequence,
             completedAt: new Date().toISOString(),
@@ -522,6 +541,116 @@ class ApiService {
             moves: scoreData.moves,
             personalBest: isPersonalBest
         };
+    }
+
+    // User Profile API methods
+    async getUserProfile() {
+        if (this.isLocalDev) {
+            return this.getUserProfileLocal();
+        }
+        return await this.makeRequest('/user/profile');
+    }
+
+    async updateUserProfile(profileData) {
+        if (this.isLocalDev) {
+            return this.updateUserProfileLocal(profileData);
+        }
+        return await this.makeRequest('/user/profile', {
+            method: 'PUT',
+            body: JSON.stringify(profileData)
+        });
+    }
+
+    async getUserProfileLocal() {
+        const profiles = JSON.parse(localStorage.getItem('robot-puzzle-profiles') || '{}');
+        return profiles['local-user-123'] || null;
+    }
+
+    async updateUserProfileLocal(profileData) {
+        try {
+            console.log('updateUserProfileLocal called with:', profileData);
+            const profiles = JSON.parse(localStorage.getItem('robot-puzzle-profiles') || '{}');
+            console.log('Current profiles:', profiles);
+            
+            profiles['local-user-123'] = {
+                ...profiles['local-user-123'],
+                ...profileData,
+                updatedAt: new Date().toISOString()
+            };
+            
+            localStorage.setItem('robot-puzzle-profiles', JSON.stringify(profiles));
+            console.log('Profile updated successfully:', profiles['local-user-123']);
+            return profiles['local-user-123'];
+        } catch (error) {
+            console.error('Error in updateUserProfileLocal:', error);
+            throw error;
+        }
+    }
+
+    // Additional round management methods
+    async getUserCompletedRounds() {
+        if (this.isLocalDev) {
+            return this.getUserCompletedRoundsLocal();
+        }
+        return await this.makeRequest('/rounds/user-completed');
+    }
+
+    async getRound(roundId) {
+        if (this.isLocalDev) {
+            return this.getRoundLocal(roundId);
+        }
+        return await this.makeRequest(`/rounds/${roundId}`);
+    }
+
+    async deleteRound(roundId) {
+        if (this.isLocalDev) {
+            return this.deleteRoundLocal(roundId);
+        }
+        return await this.makeRequest(`/rounds/${roundId}`, {
+            method: 'DELETE'
+        });
+    }
+
+    async getUserCompletedRoundsLocal() {
+        const rounds = JSON.parse(localStorage.getItem('robot-puzzle-rounds') || '[]');
+        const scores = JSON.parse(localStorage.getItem('robot-puzzle-scores') || '{}');
+        
+        const userScores = Object.values(scores).filter(score => score.userId === 'local-user-123');
+        
+        return userScores.map(score => {
+            const round = rounds.find(r => r.roundId === score.roundId);
+            return {
+                roundId: score.roundId,
+                moves: score.moves,
+                completedAt: score.completedAt,
+                round: round
+            };
+        });
+    }
+
+    async getRoundLocal(roundId) {
+        const rounds = JSON.parse(localStorage.getItem('robot-puzzle-rounds') || '[]');
+        return rounds.find(r => r.roundId === roundId) || null;
+    }
+
+    async deleteRoundLocal(roundId) {
+        let rounds = JSON.parse(localStorage.getItem('robot-puzzle-rounds') || '[]');
+        const scores = JSON.parse(localStorage.getItem('robot-puzzle-scores') || '{}');
+        
+        // Remove the round
+        rounds = rounds.filter(r => r.roundId !== roundId);
+        localStorage.setItem('robot-puzzle-rounds', JSON.stringify(rounds));
+        
+        // Remove associated scores
+        const updatedScores = {};
+        Object.keys(scores).forEach(key => {
+            if (!key.startsWith(`${roundId}-`)) {
+                updatedScores[key] = scores[key];
+            }
+        });
+        localStorage.setItem('robot-puzzle-scores', JSON.stringify(updatedScores));
+        
+        return { success: true };
     }
 }
 

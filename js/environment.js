@@ -16,7 +16,9 @@ class Environment {
             window.location.hostname === '127.0.0.1' ||
             window.location.hostname === '' ||
             window.location.protocol === 'file:' ||
-            window.location.port !== ''
+            (window.location.hostname.includes('localhost') || 
+             window.location.hostname.includes('127.0.0.1') ||
+             (window.location.port && ['3000', '8000', '8080', '5000'].includes(window.location.port)))
         );
     }
 
