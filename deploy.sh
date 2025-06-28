@@ -643,19 +643,8 @@ main() {
     # Deployment phase
     local deployment_needed=false
     
-    if [[ "$infrastructure_status" != "no_infrastructure_changes" ]]; then
-        deployment_needed=true
-        if ! deploy_infrastructure; then
-            log "${RED}❌ Infrastructure deployment failed${NC}"
-            exit 1
-        fi
-    fi
-    
-    if [[ "$lambda_changes" != "no_lambda_changes" ]]; then
-        deployment_needed=true
-    fi
-    
-    if [[ "$website_changes" != "no_website_changes" ]]; then
+    # Check if anything needs deployment
+    if [[ "$infrastructure_status" != "no_infrastructure_changes" ]] || [[ "$lambda_changes" != "no_lambda_changes" ]] || [[ "$website_changes" != "no_website_changes" ]]; then
         deployment_needed=true
     fi
     
@@ -667,22 +656,36 @@ main() {
         exit 0
     fi
     
+    # Deploy infrastructure only if needed
+    if [[ "$infrastructure_status" != "no_infrastructure_changes" ]]; then
+        if ! deploy_infrastructure; then
+            log "${RED}❌ Infrastructure deployment failed${NC}"
+            exit 1
+        fi
+    fi
+    
     # Always get stack outputs for subsequent operations
     get_stack_outputs
     
-    # Update configuration
-    if ! update_aws_config; then
-        log "${YELLOW}⚠️  Configuration update failed, but proceeding${NC}"
+    # Update configuration only if infrastructure or Lambda changes
+    if [[ "$infrastructure_status" != "no_infrastructure_changes" ]] || [[ "$lambda_changes" != "no_lambda_changes" ]]; then
+        if ! update_aws_config; then
+            log "${YELLOW}⚠️  Configuration update failed, but proceeding${NC}"
+        fi
     fi
     
-    # Deploy Lambda functions
-    if ! deploy_lambda_functions "$lambda_changes"; then
-        log "${YELLOW}⚠️  Lambda deployment had issues, but proceeding${NC}"
+    # Deploy Lambda functions only if needed
+    if [[ "$lambda_changes" != "no_lambda_changes" ]]; then
+        if ! deploy_lambda_functions "$lambda_changes"; then
+            log "${YELLOW}⚠️  Lambda deployment had issues, but proceeding${NC}"
+        fi
     fi
     
-    # Upload website files
-    if ! upload_website_files "$website_changes"; then
-        log "${YELLOW}⚠️  Website upload had issues, but proceeding${NC}"
+    # Upload website files only if needed
+    if [[ "$website_changes" != "no_website_changes" ]]; then
+        if ! upload_website_files "$website_changes"; then
+            log "${YELLOW}⚠️  Website upload had issues, but proceeding${NC}"
+        fi
     fi
     
     # Testing phase

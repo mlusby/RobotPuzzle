@@ -34,7 +34,7 @@ Resources:
             AllowedOrigins: ['*']
             MaxAge: 3600
 
-  # S3 Bucket Policy for public read access (required for website hosting)
+  # S3 Bucket Policy for public read access
   WebsiteBucketPolicy:
     Type: AWS::S3::BucketPolicy
     DependsOn: WebsiteBucket
@@ -65,11 +65,6 @@ Resources:
           RequireNumbers: true
           RequireSymbols: false
           RequireUppercase: true
-      Schema:
-        - Name: email
-          AttributeDataType: String
-          Required: true
-          Mutable: true
 
   # Cognito User Pool Client
   UserPoolClient:
@@ -85,7 +80,7 @@ Resources:
       SupportedIdentityProviders:
         - COGNITO
 
-  # DynamoDB Table for Board Configurations
+  # DynamoDB Tables
   BoardConfigurationsTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -112,11 +107,7 @@ Resources:
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
-      TimeToLiveSpecification:
-        AttributeName: ttl
-        Enabled: false
 
-  # DynamoDB Table for Game Rounds
   RoundsTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -139,11 +130,7 @@ Resources:
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
-      TimeToLiveSpecification:
-        AttributeName: ttl
-        Enabled: false
 
-  # DynamoDB Table for User Scores
   ScoresTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -170,11 +157,7 @@ Resources:
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
-      TimeToLiveSpecification:
-        AttributeName: ttl
-        Enabled: false
 
-  # DynamoDB Table for User Profiles
   UserProfilesTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -208,13 +191,13 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
-                  - dynamodb:GetItem
                   - dynamodb:PutItem
-                  - dynamodb:Query
+                  - dynamodb:GetItem
                   - dynamodb:UpdateItem
                   - dynamodb:DeleteItem
+                  - dynamodb:Query
                   - dynamodb:Scan
-                Resource: 
+                Resource:
                   - !GetAtt BoardConfigurationsTable.Arn
                   - !Sub '${BoardConfigurationsTable.Arn}/index/*'
                   - !GetAtt RoundsTable.Arn
@@ -224,28 +207,7 @@ Resources:
                   - !GetAtt UserProfilesTable.Arn
                   - !Sub '${UserProfilesTable.Arn}/index/*'
 
-  # API Gateway
-  ApiGateway:
-    Type: AWS::ApiGateway::RestApi
-    Properties:
-      Name: !Sub '${AppName}-${Environment}-api'
-      Description: Robot Puzzle Game API
-      EndpointConfiguration:
-        Types:
-          - REGIONAL
-
-  # API Gateway Authorizer (Cognito)
-  ApiAuthorizer:
-    Type: AWS::ApiGateway::Authorizer
-    Properties:
-      Name: CognitoAuthorizer
-      RestApiId: !Ref ApiGateway
-      Type: COGNITO_USER_POOLS
-      ProviderARNs:
-        - !GetAtt UserPool.Arn
-      IdentitySource: method.request.header.Authorization
-
-  # Lambda Function for Board Configurations CRUD
+  # Lambda Functions (minimal definitions - code deployed separately)
   BoardConfigurationsFunction:
     Type: AWS::Lambda::Function
     Properties:
@@ -255,116 +217,13 @@ Resources:
       Role: !GetAtt LambdaExecutionRole.Arn
       Environment:
         Variables:
-          TABLE_NAME: !Ref BoardConfigurationsTable
+          CONFIGURATIONS_TABLE: !Ref BoardConfigurationsTable
+          ROUNDS_TABLE: !Ref RoundsTable
       Code:
         ZipFile: |
-          import json
-          import boto3
-          import os
-          from decimal import Decimal
-          
-          dynamodb = boto3.resource('dynamodb')
-          table = dynamodb.Table(os.environ['TABLE_NAME'])
-          
           def lambda_handler(event, context):
-              try:
-                  http_method = event['httpMethod']
-                  user_id = event['requestContext']['authorizer']['claims']['sub']
-                  user_email = event['requestContext']['authorizer']['claims']['email']
-                  
-                  if http_method == 'GET':
-                      return get_configurations(user_id)
-                  elif http_method == 'POST':
-                      return create_configuration(user_id, user_email, json.loads(event['body']))
-                  elif http_method == 'PUT':
-                      config_id = event['pathParameters']['configId']
-                      return update_configuration(user_id, config_id, json.loads(event['body']))
-                  elif http_method == 'DELETE':
-                      config_id = event['pathParameters']['configId']
-                      return delete_configuration(user_id, config_id)
-                  else:
-                      return {
-                          'statusCode': 405,
-                          'headers': {'Access-Control-Allow-Origin': '*'},
-                          'body': json.dumps({'error': 'Method not allowed'})
-                      }
-              except Exception as e:
-                  return {
-                      'statusCode': 500,
-                      'headers': {'Access-Control-Allow-Origin': '*'},
-                      'body': json.dumps({'error': str(e)})
-                  }
-          
-          def get_configurations(user_id):
-              response = table.query(KeyConditionExpression='userId = :userId', 
-                                   ExpressionAttributeValues={':userId': user_id})
-              items = response['Items']
-              # Convert to expected format {configId: {walls: [], targets: []}}
-              configurations = {}
-              for item in items:
-                  configurations[item['configId']] = {
-                      'walls': item.get('walls', []),
-                      'targets': item.get('targets', [])
-                  }
-              return {
-                  'statusCode': 200,
-                  'headers': {'Access-Control-Allow-Origin': '*'},
-                  'body': json.dumps(configurations, default=decimal_default)
-              }
-          
-          def create_configuration(user_id, user_email, data):
-              # Find next available config ID
-              response = table.query(KeyConditionExpression='userId = :userId',
-                                   ExpressionAttributeValues={':userId': user_id})
-              existing_ids = [int(item['configId']) for item in response['Items'] if item['configId'].isdigit()]
-              config_id = str(max(existing_ids) + 1 if existing_ids else 1)
-              
-              import datetime
-              item = {
-                  'userId': user_id,
-                  'configId': config_id,
-                  'walls': data['walls'],
-                  'targets': data['targets'],
-                  'authorEmail': user_email,
-                  'isBaseline': user_email == 'mlusby@gmail.com',
-                  'solved': False,
-                  'createdAt': datetime.datetime.utcnow().isoformat()
-              }
-              
-              table.put_item(Item=item)
-              return {
-                  'statusCode': 201,
-                  'headers': {'Access-Control-Allow-Origin': '*'},
-                  'body': json.dumps({'configId': config_id})
-              }
-          
-          def update_configuration(user_id, config_id, data):
-              table.put_item(Item={
-                  'userId': user_id,
-                  'configId': config_id,
-                  'walls': data['walls'],
-                  'targets': data['targets']
-              })
-              return {
-                  'statusCode': 200,
-                  'headers': {'Access-Control-Allow-Origin': '*'},
-                  'body': json.dumps({'message': 'Updated successfully'})
-              }
-          
-          def delete_configuration(user_id, config_id):
-              table.delete_item(Key={'userId': user_id, 'configId': config_id})
-              return {
-                  'statusCode': 200,
-                  'headers': {'Access-Control-Allow-Origin': '*'},
-                  'body': json.dumps({'message': 'Deleted successfully'})
-              }
-          
-          def decimal_default(obj):
-              if isinstance(obj, Decimal):
-                  return float(obj)
-              raise TypeError
+              return {'statusCode': 200, 'body': 'Function placeholder'}
 
-  # Lambda Function for Rounds Management
   RoundsFunction:
     Type: AWS::Lambda::Function
     Properties:
@@ -375,142 +234,11 @@ Resources:
       Environment:
         Variables:
           ROUNDS_TABLE: !Ref RoundsTable
-          CONFIGS_TABLE: !Ref BoardConfigurationsTable
       Code:
         ZipFile: |
-          import json
-          import boto3
-          import os
-          from decimal import Decimal
-          import uuid
-          import datetime
-          
-          dynamodb = boto3.resource('dynamodb')
-          rounds_table = dynamodb.Table(os.environ['ROUNDS_TABLE'])
-          configs_table = dynamodb.Table(os.environ['CONFIGS_TABLE'])
-          
           def lambda_handler(event, context):
-              try:
-                  http_method = event['httpMethod']
-                  
-                  if http_method == 'GET':
-                      path = event.get('path', '')
-                      if '/baseline' in path:
-                          return get_baseline_rounds()
-                      elif '/user-submitted' in path:
-                          user_id = event['requestContext']['authorizer']['claims']['sub']
-                          return get_user_submitted_rounds(user_id)
-                      else:
-                          return get_all_rounds()
-                  elif http_method == 'POST':
-                      user_id = event['requestContext']['authorizer']['claims']['sub']
-                      user_email = event['requestContext']['authorizer']['claims']['email']
-                      config_id = event['pathParameters']['configId']
-                      return create_round(user_id, user_email, config_id, json.loads(event['body']))
-                  else:
-                      return {
-                          'statusCode': 405,
-                          'headers': {'Access-Control-Allow-Origin': '*'},
-                          'body': json.dumps({'error': 'Method not allowed'})
-                      }
-              except Exception as e:
-                  return {
-                      'statusCode': 500,
-                      'headers': {'Access-Control-Allow-Origin': '*'},
-                      'body': json.dumps({'error': str(e)})
-                  }
-          
-          def get_baseline_rounds():
-              # Get rounds created by mlusby@gmail.com
-              response = rounds_table.query(
-                  IndexName='AuthorIndex',
-                  KeyConditionExpression='authorEmail = :email',
-                  ExpressionAttributeValues={':email': 'mlusby@gmail.com'},
-                  FilterExpression='attribute_exists(isActive) AND isActive = :active',
-                  ExpressionAttributeValues={':email': 'mlusby@gmail.com', ':active': True}
-              )
-              return {
-                  'statusCode': 200,
-                  'headers': {'Access-Control-Allow-Origin': '*'},
-                  'body': json.dumps(response['Items'], default=decimal_default)
-              }
-          
-          def get_user_submitted_rounds(user_id):
-              # Get configurations that user has both authored and solved
-              user_configs = configs_table.query(
-                  KeyConditionExpression='userId = :userId',
-                  ExpressionAttributeValues={':userId': user_id},
-                  FilterExpression='solved = :solved',
-                  ExpressionAttributeValues={':userId': user_id, ':solved': True}
-              )
-              
-              # Get rounds for these configurations
-              rounds = []
-              for config in user_configs['Items']:
-                  config_rounds = rounds_table.query(
-                      IndexName='AuthorIndex',
-                      KeyConditionExpression='authorEmail = :email',
-                      ExpressionAttributeValues={':email': config['authorEmail']},
-                      FilterExpression='configId = :configId',
-                      ExpressionAttributeValues={':email': config['authorEmail'], ':configId': config['configId']}
-                  )
-                  rounds.extend(config_rounds['Items'])
-              
-              return {
-                  'statusCode': 200,
-                  'headers': {'Access-Control-Allow-Origin': '*'},
-                  'body': json.dumps(rounds, default=decimal_default)
-              }
-          
-          def get_all_rounds():
-              response = rounds_table.scan(
-                  FilterExpression='attribute_exists(isActive) AND isActive = :active',
-                  ExpressionAttributeValues={':active': True}
-              )
-              return {
-                  'statusCode': 200,
-                  'headers': {'Access-Control-Allow-Origin': '*'},
-                  'body': json.dumps(response['Items'], default=decimal_default)
-              }
-          
-          def create_round(user_id, user_email, config_id, data):
-              # Get the configuration
-              config_response = configs_table.get_item(Key={'userId': user_id, 'configId': config_id})
-              if 'Item' not in config_response:
-                  return {
-                      'statusCode': 404,
-                      'headers': {'Access-Control-Allow-Origin': '*'},
-                      'body': json.dumps({'error': 'Configuration not found'})
-                  }
-              
-              config = config_response['Item']
-              round_id = str(uuid.uuid4())
-              
-              round_item = {
-                  'roundId': round_id,
-                  'configId': config_id,
-                  'authorEmail': user_email,
-                  'initialRobotPositions': data['initialRobotPositions'],
-                  'targetPositions': data['targetPositions'],
-                  'walls': config['walls'],
-                  'targets': config['targets'],
-                  'isActive': True,
-                  'createdAt': datetime.datetime.utcnow().isoformat()
-              }
-              
-              rounds_table.put_item(Item=round_item)
-              return {
-                  'statusCode': 201,
-                  'headers': {'Access-Control-Allow-Origin': '*'},
-                  'body': json.dumps({'roundId': round_id})
-              }
-          
-          def decimal_default(obj):
-              if isinstance(obj, Decimal):
-                  return float(obj)
-              raise TypeError
+              return {'statusCode': 200, 'body': 'Function placeholder'}
 
-  # Lambda Function for Scores and Leaderboard
   ScoresFunction:
     Type: AWS::Lambda::Function
     Properties:
@@ -521,135 +249,11 @@ Resources:
       Environment:
         Variables:
           SCORES_TABLE: !Ref ScoresTable
-          CONFIGS_TABLE: !Ref BoardConfigurationsTable
       Code:
         ZipFile: |
-          import json
-          import boto3
-          import os
-          from decimal import Decimal
-          import datetime
-          
-          dynamodb = boto3.resource('dynamodb')
-          scores_table = dynamodb.Table(os.environ['SCORES_TABLE'])
-          configs_table = dynamodb.Table(os.environ['CONFIGS_TABLE'])
-          
           def lambda_handler(event, context):
-              try:
-                  http_method = event['httpMethod']
-                  user_id = event['requestContext']['authorizer']['claims']['sub']
-                  
-                  if http_method == 'GET':
-                      path_params = event.get('pathParameters') or {}
-                      round_id = path_params.get('roundId')
-                      if round_id:
-                          return get_leaderboard(round_id)
-                      else:
-                          return get_user_scores(user_id)
-                  elif http_method == 'POST':
-                      path_params = event.get('pathParameters') or {}
-                      round_id = path_params.get('roundId')
-                      if not round_id:
-                          return {
-                              'statusCode': 400,
-                              'headers': {'Access-Control-Allow-Origin': '*'},
-                              'body': json.dumps({'error': 'roundId is required for score submission'})
-                          }
-                      user_email = event['requestContext']['authorizer']['claims']['email']
-                      return submit_score(user_id, round_id, json.loads(event['body']), user_email)
-                  else:
-                      return {
-                          'statusCode': 405,
-                          'headers': {'Access-Control-Allow-Origin': '*'},
-                          'body': json.dumps({'error': 'Method not allowed'})
-                      }
-              except Exception as e:
-                  return {
-                      'statusCode': 500,
-                      'headers': {'Access-Control-Allow-Origin': '*'},
-                      'body': json.dumps({'error': str(e)})
-                  }
-          
-          def get_leaderboard(round_id):
-              response = scores_table.query(
-                  IndexName='LeaderboardIndex',
-                  KeyConditionExpression='roundId = :roundId',
-                  ExpressionAttributeValues={':roundId': round_id},
-                  ScanIndexForward=True  # Sort by moves ascending (best scores first)
-              )
-              return {
-                  'statusCode': 200,
-                  'headers': {'Access-Control-Allow-Origin': '*'},
-                  'body': json.dumps(response['Items'], default=decimal_default)
-              }
-          
-          def get_user_scores(user_id):
-              response = scores_table.scan(
-                  FilterExpression='userId = :userId',
-                  ExpressionAttributeValues={':userId': user_id}
-              )
-              return {
-                  'statusCode': 200,
-                  'headers': {'Access-Control-Allow-Origin': '*'},
-                  'body': json.dumps(response['Items'], default=decimal_default)
-              }
-          
-          def submit_score(user_id, round_id, data, user_email):
-              moves = data['moves']
-              move_sequence = data['moveSequence']
-              
-              # Check if user already has a score for this round
-              existing_response = scores_table.get_item(Key={'roundId': round_id, 'userId': user_id})
-              
-              attempt_count = 1
-              if 'Item' in existing_response:
-                  existing_score = existing_response['Item']
-                  attempt_count = existing_score.get('attemptCount', 0) + 1
-                  
-                  # Only update if new score is better (fewer moves)
-                  if moves >= existing_score['moves']:
-                      return {
-                          'statusCode': 200,
-                          'headers': {'Access-Control-Allow-Origin': '*'},
-                          'body': json.dumps({
-                              'message': 'Score not improved',
-                              'currentBest': int(existing_score['moves']),
-                              'submitted': moves
-                          })
-                      }
-              
-              # Check if this is the user's first completion of their own configuration
-              # Mark the configuration as solved if it's the author's first completion
-              # We need to check if this round corresponds to a config authored by this user
-              # This would require getting round info first - simplified for now
-              
-              score_item = {
-                  'roundId': round_id,
-                  'userId': user_id,
-                  'moves': moves,
-                  'moveSequence': move_sequence,
-                  'completedAt': datetime.datetime.utcnow().isoformat(),
-                  'attemptCount': attempt_count
-              }
-              
-              scores_table.put_item(Item=score_item)
-              
-              return {
-                  'statusCode': 201,
-                  'headers': {'Access-Control-Allow-Origin': '*'},
-                  'body': json.dumps({
-                      'message': 'Score submitted successfully',
-                      'moves': moves,
-                      'personalBest': True if attempt_count == 1 else moves < existing_response['Item']['moves']
-                  })
-              }
-          
-          def decimal_default(obj):
-              if isinstance(obj, Decimal):
-                  return float(obj)
-              raise TypeError
+              return {'statusCode': 200, 'body': 'Function placeholder'}
 
-  # Lambda Function for User Profiles
   UserProfilesFunction:
     Type: AWS::Lambda::Function
     Properties:
@@ -662,136 +266,31 @@ Resources:
           PROFILES_TABLE: !Ref UserProfilesTable
       Code:
         ZipFile: |
-          import json
-          import boto3
-          import os
-          from decimal import Decimal
-          import datetime
-          import logging
-          
-          # Configure logging
-          logger = logging.getLogger()
-          logger.setLevel(logging.INFO)
-          
-          dynamodb = boto3.resource('dynamodb')
-          profiles_table = dynamodb.Table(os.environ['PROFILES_TABLE'])
-          
           def lambda_handler(event, context):
-              logger.info(f"Received event: {json.dumps(event, default=str)}")
-              
-              try:
-                  http_method = event.get('httpMethod', 'UNKNOWN')
-                  
-                  if http_method == 'OPTIONS':
-                      return cors_response()
-                  
-                  user_id = event['requestContext']['authorizer']['claims']['sub']
-                  user_email = event['requestContext']['authorizer']['claims']['email']
-                  
-                  if not user_id:
-                      return error_response(401, 'Unauthorized: No user ID found')
-                  
-                  if http_method == 'GET':
-                      return get_user_profile(user_id, user_email)
-                  elif http_method == 'PUT':
-                      body = json.loads(event.get('body', '{}'))
-                      return update_user_profile(user_id, user_email, body)
-                  else:
-                      return error_response(405, f'Method {http_method} not allowed')
-                      
-              except Exception as e:
-                  logger.error(f"Error: {str(e)}")
-                  return error_response(500, f'Internal server error: {str(e)}')
-          
-          def get_user_profile(user_id, user_email):
-              try:
-                  response = profiles_table.get_item(Key={'userId': user_id})
-                  
-                  if 'Item' in response:
-                      profile = response['Item']
-                      profile = json.loads(json.dumps(profile, default=decimal_default))
-                  else:
-                      profile = {
-                          'userId': user_id,
-                          'email': user_email,
-                          'username': None,
-                          'createdAt': datetime.datetime.utcnow().isoformat()
-                      }
-                  
-                  return success_response(profile)
-                  
-              except Exception as e:
-                  return error_response(500, f'Failed to retrieve user profile: {str(e)}')
-          
-          def update_user_profile(user_id, user_email, profile_data):
-              try:
-                  username = profile_data.get('username')
-                  if username is not None:
-                      username = username.strip()
-                      if len(username) < 3 or len(username) > 20:
-                          return error_response(400, 'Username must be 3-20 characters long')
-                  
-                  existing_response = profiles_table.get_item(Key={'userId': user_id})
-                  
-                  if 'Item' in existing_response:
-                      profile = existing_response['Item']
-                      profile['updatedAt'] = datetime.datetime.utcnow().isoformat()
-                  else:
-                      profile = {
-                          'userId': user_id,
-                          'email': user_email,
-                          'createdAt': datetime.datetime.utcnow().isoformat(),
-                          'updatedAt': datetime.datetime.utcnow().isoformat()
-                      }
-                  
-                  if username is not None:
-                      profile['username'] = username
-                  
-                  profiles_table.put_item(Item=profile)
-                  
-                  response_profile = json.loads(json.dumps(profile, default=decimal_default))
-                  return success_response(response_profile)
-                  
-              except Exception as e:
-                  return error_response(500, f'Failed to update user profile: {str(e)}')
-          
-          def success_response(data):
-              return {
-                  'statusCode': 200,
-                  'headers': cors_headers(),
-                  'body': json.dumps(data, default=decimal_default)
-              }
-          
-          def error_response(status_code, message):
-              return {
-                  'statusCode': status_code,
-                  'headers': cors_headers(),
-                  'body': json.dumps({'error': message})
-              }
-          
-          def cors_response():
-              return {
-                  'statusCode': 200,
-                  'headers': cors_headers(),
-                  'body': ''
-              }
-          
-          def cors_headers():
-              return {
-                  'Access-Control-Allow-Origin': '*',
-                  'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-                  'Access-Control-Allow-Methods': 'GET,PUT,POST,DELETE,OPTIONS'
-              }
-          
-          def decimal_default(obj):
-              if isinstance(obj, Decimal):
-                  if obj % 1 == 0:
-                      return int(obj)
-                  else:
-                      return float(obj)
-              raise TypeError
+              return {'statusCode': 200, 'body': 'Function placeholder'}
 
-  # API Gateway Resources and Methods
+  # API Gateway
+  ApiGateway:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub '${AppName}-${Environment}-api'
+      Description: Robot Puzzle Game API
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+
+  # API Gateway Authorizer
+  ApiAuthorizer:
+    Type: AWS::ApiGateway::Authorizer
+    Properties:
+      Name: !Sub '${AppName}-${Environment}-authorizer'
+      RestApiId: !Ref ApiGateway
+      Type: COGNITO_USER_POOLS
+      ProviderARNs:
+        - !GetAtt UserPool.Arn
+      IdentitySource: method.request.header.Authorization
+
+  # API Resources and Methods
   ConfigurationsResource:
     Type: AWS::ApiGateway::Resource
     Properties:
@@ -806,124 +305,6 @@ Resources:
       ParentId: !Ref ConfigurationsResource
       PathPart: '{configId}'
 
-  # GET /configurations
-  GetConfigurationsMethod:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      RestApiId: !Ref ApiGateway
-      ResourceId: !Ref ConfigurationsResource
-      HttpMethod: GET
-      AuthorizationType: COGNITO_USER_POOLS
-      AuthorizerId: !Ref ApiAuthorizer
-      Integration:
-        Type: AWS_PROXY
-        IntegrationHttpMethod: POST
-        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BoardConfigurationsFunction.Arn}/invocations'
-      MethodResponses:
-        - StatusCode: 200
-
-  # POST /configurations
-  PostConfigurationsMethod:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      RestApiId: !Ref ApiGateway
-      ResourceId: !Ref ConfigurationsResource
-      HttpMethod: POST
-      AuthorizationType: COGNITO_USER_POOLS
-      AuthorizerId: !Ref ApiAuthorizer
-      Integration:
-        Type: AWS_PROXY
-        IntegrationHttpMethod: POST
-        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BoardConfigurationsFunction.Arn}/invocations'
-      MethodResponses:
-        - StatusCode: 201
-
-  # PUT /configurations/{configId}
-  PutConfigurationMethod:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      RestApiId: !Ref ApiGateway
-      ResourceId: !Ref ConfigurationResource
-      HttpMethod: PUT
-      AuthorizationType: COGNITO_USER_POOLS
-      AuthorizerId: !Ref ApiAuthorizer
-      Integration:
-        Type: AWS_PROXY
-        IntegrationHttpMethod: POST
-        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BoardConfigurationsFunction.Arn}/invocations'
-      MethodResponses:
-        - StatusCode: 200
-
-  # DELETE /configurations/{configId}
-  DeleteConfigurationMethod:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      RestApiId: !Ref ApiGateway
-      ResourceId: !Ref ConfigurationResource
-      HttpMethod: DELETE
-      AuthorizationType: COGNITO_USER_POOLS
-      AuthorizerId: !Ref ApiAuthorizer
-      Integration:
-        Type: AWS_PROXY
-        IntegrationHttpMethod: POST
-        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BoardConfigurationsFunction.Arn}/invocations'
-      MethodResponses:
-        - StatusCode: 200
-
-  # CORS OPTIONS methods
-  ConfigurationsOptionsMethod:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      RestApiId: !Ref ApiGateway
-      ResourceId: !Ref ConfigurationsResource
-      HttpMethod: OPTIONS
-      AuthorizationType: NONE
-      Integration:
-        Type: MOCK
-        IntegrationResponses:
-          - StatusCode: '200'
-            ResponseParameters:
-              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
-              method.response.header.Access-Control-Allow-Methods: "'GET,POST,OPTIONS'"
-              method.response.header.Access-Control-Allow-Origin: "'*'"
-            ResponseTemplates:
-              application/json: ''
-        RequestTemplates:
-          application/json: '{"statusCode": 200}'
-      MethodResponses:
-        - StatusCode: 200
-          ResponseParameters:
-            method.response.header.Access-Control-Allow-Headers: true
-            method.response.header.Access-Control-Allow-Methods: true
-            method.response.header.Access-Control-Allow-Origin: true
-
-  ConfigurationOptionsMethod:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      RestApiId: !Ref ApiGateway
-      ResourceId: !Ref ConfigurationResource
-      HttpMethod: OPTIONS
-      AuthorizationType: NONE
-      Integration:
-        Type: MOCK
-        IntegrationResponses:
-          - StatusCode: '200'
-            ResponseParameters:
-              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
-              method.response.header.Access-Control-Allow-Methods: "'PUT,DELETE,OPTIONS'"
-              method.response.header.Access-Control-Allow-Origin: "'*'"
-            ResponseTemplates:
-              application/json: ''
-        RequestTemplates:
-          application/json: '{"statusCode": 200}'
-      MethodResponses:
-        - StatusCode: 200
-          ResponseParameters:
-            method.response.header.Access-Control-Allow-Headers: true
-            method.response.header.Access-Control-Allow-Methods: true
-            method.response.header.Access-Control-Allow-Origin: true
-
-  # Rounds API Resources
   RoundsResource:
     Type: AWS::ApiGateway::Resource
     Properties:
@@ -931,42 +312,6 @@ Resources:
       ParentId: !GetAtt ApiGateway.RootResourceId
       PathPart: rounds
 
-  BaselineRoundsResource:
-    Type: AWS::ApiGateway::Resource
-    Properties:
-      RestApiId: !Ref ApiGateway
-      ParentId: !Ref RoundsResource
-      PathPart: baseline
-
-  UserSubmittedRoundsResource:
-    Type: AWS::ApiGateway::Resource
-    Properties:
-      RestApiId: !Ref ApiGateway
-      ParentId: !Ref RoundsResource
-      PathPart: user-submitted
-
-  SolvedRoundsResource:
-    Type: AWS::ApiGateway::Resource
-    Properties:
-      RestApiId: !Ref ApiGateway
-      ParentId: !Ref RoundsResource
-      PathPart: solved
-
-  ConfigRoundsResource:
-    Type: AWS::ApiGateway::Resource
-    Properties:
-      RestApiId: !Ref ApiGateway
-      ParentId: !Ref RoundsResource
-      PathPart: config
-
-  ConfigIdRoundsResource:
-    Type: AWS::ApiGateway::Resource
-    Properties:
-      RestApiId: !Ref ApiGateway
-      ParentId: !Ref ConfigRoundsResource
-      PathPart: '{configId}'
-
-  # Scores API Resources
   ScoresResource:
     Type: AWS::ApiGateway::Resource
     Properties:
@@ -974,283 +319,6 @@ Resources:
       ParentId: !GetAtt ApiGateway.RootResourceId
       PathPart: scores
 
-  RoundScoresResource:
-    Type: AWS::ApiGateway::Resource
-    Properties:
-      RestApiId: !Ref ApiGateway
-      ParentId: !Ref ScoresResource
-      PathPart: '{roundId}'
-
-  # GET /rounds/baseline
-  GetBaselineRoundsMethod:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      RestApiId: !Ref ApiGateway
-      ResourceId: !Ref BaselineRoundsResource
-      HttpMethod: GET
-      AuthorizationType: COGNITO_USER_POOLS
-      AuthorizerId: !Ref ApiAuthorizer
-      Integration:
-        Type: AWS_PROXY
-        IntegrationHttpMethod: POST
-        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RoundsFunction.Arn}/invocations'
-      MethodResponses:
-        - StatusCode: 200
-
-  # GET /rounds/user-submitted
-  GetUserSubmittedRoundsMethod:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      RestApiId: !Ref ApiGateway
-      ResourceId: !Ref UserSubmittedRoundsResource
-      HttpMethod: GET
-      AuthorizationType: COGNITO_USER_POOLS
-      AuthorizerId: !Ref ApiAuthorizer
-      Integration:
-        Type: AWS_PROXY
-        IntegrationHttpMethod: POST
-        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RoundsFunction.Arn}/invocations'
-      MethodResponses:
-        - StatusCode: 200
-
-  # GET /rounds/solved
-  GetSolvedRoundsMethod:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      RestApiId: !Ref ApiGateway
-      ResourceId: !Ref SolvedRoundsResource
-      HttpMethod: GET
-      AuthorizationType: COGNITO_USER_POOLS
-      AuthorizerId: !Ref ApiAuthorizer
-      Integration:
-        Type: AWS_PROXY
-        IntegrationHttpMethod: POST
-        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RoundsFunction.Arn}/invocations'
-      MethodResponses:
-        - StatusCode: 200
-
-  # POST /rounds/config/{configId}
-  PostConfigRoundMethod:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      RestApiId: !Ref ApiGateway
-      ResourceId: !Ref ConfigIdRoundsResource
-      HttpMethod: POST
-      AuthorizationType: COGNITO_USER_POOLS
-      AuthorizerId: !Ref ApiAuthorizer
-      Integration:
-        Type: AWS_PROXY
-        IntegrationHttpMethod: POST
-        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RoundsFunction.Arn}/invocations'
-      MethodResponses:
-        - StatusCode: 201
-
-  # GET /scores/{roundId} (leaderboard)
-  GetLeaderboardMethod:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      RestApiId: !Ref ApiGateway
-      ResourceId: !Ref RoundScoresResource
-      HttpMethod: GET
-      AuthorizationType: COGNITO_USER_POOLS
-      AuthorizerId: !Ref ApiAuthorizer
-      Integration:
-        Type: AWS_PROXY
-        IntegrationHttpMethod: POST
-        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ScoresFunction.Arn}/invocations'
-      MethodResponses:
-        - StatusCode: 200
-
-  # POST /scores/{roundId} (submit score)
-  PostScoreMethod:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      RestApiId: !Ref ApiGateway
-      ResourceId: !Ref RoundScoresResource
-      HttpMethod: POST
-      AuthorizationType: COGNITO_USER_POOLS
-      AuthorizerId: !Ref ApiAuthorizer
-      Integration:
-        Type: AWS_PROXY
-        IntegrationHttpMethod: POST
-        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ScoresFunction.Arn}/invocations'
-      MethodResponses:
-        - StatusCode: 201
-
-  # GET /scores (user scores)
-  GetUserScoresMethod:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      RestApiId: !Ref ApiGateway
-      ResourceId: !Ref ScoresResource
-      HttpMethod: GET
-      AuthorizationType: COGNITO_USER_POOLS
-      AuthorizerId: !Ref ApiAuthorizer
-      Integration:
-        Type: AWS_PROXY
-        IntegrationHttpMethod: POST
-        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ScoresFunction.Arn}/invocations'
-      MethodResponses:
-        - StatusCode: 200
-
-  # OPTIONS methods for CORS
-  BaselineRoundsOptionsMethod:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      RestApiId: !Ref ApiGateway
-      ResourceId: !Ref BaselineRoundsResource
-      HttpMethod: OPTIONS
-      AuthorizationType: NONE
-      Integration:
-        Type: MOCK
-        IntegrationResponses:
-          - StatusCode: '200'
-            ResponseParameters:
-              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
-              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
-              method.response.header.Access-Control-Allow-Origin: "'*'"
-            ResponseTemplates:
-              application/json: ''
-        RequestTemplates:
-          application/json: '{"statusCode": 200}'
-      MethodResponses:
-        - StatusCode: 200
-          ResponseParameters:
-            method.response.header.Access-Control-Allow-Headers: true
-            method.response.header.Access-Control-Allow-Methods: true
-            method.response.header.Access-Control-Allow-Origin: true
-
-  UserSubmittedRoundsOptionsMethod:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      RestApiId: !Ref ApiGateway
-      ResourceId: !Ref UserSubmittedRoundsResource
-      HttpMethod: OPTIONS
-      AuthorizationType: NONE
-      Integration:
-        Type: MOCK
-        IntegrationResponses:
-          - StatusCode: '200'
-            ResponseParameters:
-              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
-              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
-              method.response.header.Access-Control-Allow-Origin: "'*'"
-            ResponseTemplates:
-              application/json: ''
-        RequestTemplates:
-          application/json: '{"statusCode": 200}'
-      MethodResponses:
-        - StatusCode: 200
-          ResponseParameters:
-            method.response.header.Access-Control-Allow-Headers: true
-            method.response.header.Access-Control-Allow-Methods: true
-            method.response.header.Access-Control-Allow-Origin: true
-
-  SolvedRoundsOptionsMethod:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      RestApiId: !Ref ApiGateway
-      ResourceId: !Ref SolvedRoundsResource
-      HttpMethod: OPTIONS
-      AuthorizationType: NONE
-      Integration:
-        Type: MOCK
-        IntegrationResponses:
-          - StatusCode: '200'
-            ResponseParameters:
-              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
-              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
-              method.response.header.Access-Control-Allow-Origin: "'*'"
-            ResponseTemplates:
-              application/json: ''
-        RequestTemplates:
-          application/json: '{"statusCode": 200}'
-      MethodResponses:
-        - StatusCode: 200
-          ResponseParameters:
-            method.response.header.Access-Control-Allow-Headers: true
-            method.response.header.Access-Control-Allow-Methods: true
-            method.response.header.Access-Control-Allow-Origin: true
-
-  ConfigIdRoundsOptionsMethod:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      RestApiId: !Ref ApiGateway
-      ResourceId: !Ref ConfigIdRoundsResource
-      HttpMethod: OPTIONS
-      AuthorizationType: NONE
-      Integration:
-        Type: MOCK
-        IntegrationResponses:
-          - StatusCode: '200'
-            ResponseParameters:
-              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
-              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
-              method.response.header.Access-Control-Allow-Origin: "'*'"
-            ResponseTemplates:
-              application/json: ''
-        RequestTemplates:
-          application/json: '{"statusCode": 200}'
-      MethodResponses:
-        - StatusCode: 200
-          ResponseParameters:
-            method.response.header.Access-Control-Allow-Headers: true
-            method.response.header.Access-Control-Allow-Methods: true
-            method.response.header.Access-Control-Allow-Origin: true
-
-  ScoresOptionsMethod:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      RestApiId: !Ref ApiGateway
-      ResourceId: !Ref ScoresResource
-      HttpMethod: OPTIONS
-      AuthorizationType: NONE
-      Integration:
-        Type: MOCK
-        IntegrationResponses:
-          - StatusCode: '200'
-            ResponseParameters:
-              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
-              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
-              method.response.header.Access-Control-Allow-Origin: "'*'"
-            ResponseTemplates:
-              application/json: ''
-        RequestTemplates:
-          application/json: '{"statusCode": 200}'
-      MethodResponses:
-        - StatusCode: 200
-          ResponseParameters:
-            method.response.header.Access-Control-Allow-Headers: true
-            method.response.header.Access-Control-Allow-Methods: true
-            method.response.header.Access-Control-Allow-Origin: true
-
-  RoundScoresOptionsMethod:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      RestApiId: !Ref ApiGateway
-      ResourceId: !Ref RoundScoresResource
-      HttpMethod: OPTIONS
-      AuthorizationType: NONE
-      Integration:
-        Type: MOCK
-        IntegrationResponses:
-          - StatusCode: '200'
-            ResponseParameters:
-              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
-              method.response.header.Access-Control-Allow-Methods: "'GET,POST,OPTIONS'"
-              method.response.header.Access-Control-Allow-Origin: "'*'"
-            ResponseTemplates:
-              application/json: ''
-        RequestTemplates:
-          application/json: '{"statusCode": 200}'
-      MethodResponses:
-        - StatusCode: 200
-          ResponseParameters:
-            method.response.header.Access-Control-Allow-Headers: true
-            method.response.header.Access-Control-Allow-Methods: true
-            method.response.header.Access-Control-Allow-Origin: true
-
-  # User Profile API Resources
   UserResource:
     Type: AWS::ApiGateway::Resource
     Properties:
@@ -1265,6 +333,33 @@ Resources:
       ParentId: !Ref UserResource
       PathPart: profile
 
+  # API Methods (simplified - only essential ones)
+  GetConfigurationsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ConfigurationsResource
+      HttpMethod: GET
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref ApiAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BoardConfigurationsFunction.Arn}/invocations'
+
+  PostConfigurationsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ConfigurationsResource
+      HttpMethod: POST
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref ApiAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BoardConfigurationsFunction.Arn}/invocations'
+
   GetUserProfileMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -1277,8 +372,6 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UserProfilesFunction.Arn}/invocations'
-        IntegrationResponses:
-          - StatusCode: 200
 
   PutUserProfileMethod:
     Type: AWS::ApiGateway::Method
@@ -1292,8 +385,36 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UserProfilesFunction.Arn}/invocations'
+
+  # CORS Options Methods
+  ConfigurationsOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ConfigurationsResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
         IntegrationResponses:
           - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+            ResponseTemplates:
+              application/json: ''
+        PassthroughBehavior: WHEN_NO_MATCH
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels:
+            application/json: Empty
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
 
   UserProfileOptionsMethod:
     Type: AWS::ApiGateway::Method
@@ -1324,8 +445,8 @@ Resources:
             method.response.header.Access-Control-Allow-Methods: true
             method.response.header.Access-Control-Allow-Origin: true
 
-  # Lambda Permissions for API Gateway
-  LambdaApiGatewayPermission:
+  # Lambda Permissions
+  BoardConfigurationsLambdaPermission:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !Ref BoardConfigurationsFunction
@@ -1333,23 +454,7 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*'
 
-  RoundsLambdaApiGatewayPermission:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName: !Ref RoundsFunction
-      Action: lambda:InvokeFunction
-      Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*'
-
-  ScoresLambdaApiGatewayPermission:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName: !Ref ScoresFunction
-      Action: lambda:InvokeFunction
-      Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*'
-
-  UserProfilesLambdaApiGatewayPermission:
+  UserProfilesLambdaPermission:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !Ref UserProfilesFunction
@@ -1357,7 +462,7 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*'
 
-  # Gateway Responses for CORS error handling
+  # Gateway Responses for CORS
   UnauthorizedGatewayResponse:
     Type: AWS::ApiGateway::GatewayResponse
     Properties:
@@ -1376,31 +481,15 @@ Resources:
         gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
         gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
 
-  # API Gateway Deployment - Updated for CORS fix
+  # API Deployment
   ApiDeployment:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
       - GetConfigurationsMethod
       - PostConfigurationsMethod
-      - PutConfigurationMethod
-      - DeleteConfigurationMethod
-      - ConfigurationsOptionsMethod
-      - ConfigurationOptionsMethod
-      - GetBaselineRoundsMethod
-      - GetUserSubmittedRoundsMethod
-      - GetSolvedRoundsMethod
-      - PostConfigRoundMethod
-      - GetLeaderboardMethod
-      - PostScoreMethod
-      - GetUserScoresMethod
-      - BaselineRoundsOptionsMethod
-      - UserSubmittedRoundsOptionsMethod
-      - SolvedRoundsOptionsMethod
-      - ConfigIdRoundsOptionsMethod
-      - ScoresOptionsMethod
-      - RoundScoresOptionsMethod
       - GetUserProfileMethod
       - PutUserProfileMethod
+      - ConfigurationsOptionsMethod
       - UserProfileOptionsMethod
       - UnauthorizedGatewayResponse
       - DefaultGatewayResponse
