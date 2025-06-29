@@ -39,7 +39,12 @@ def lambda_handler(event, context):
                 # Handle /rounds
                 return handle_get_rounds(event, user_id, user_email)
         elif http_method == 'POST':
-            return handle_create_round(event, user_id, user_email)
+            if '/config/' in path:
+                # Handle /rounds/config/{id} - extract configId from path
+                return handle_create_round_with_config_id(event, user_id, user_email)
+            else:
+                # Handle /rounds
+                return handle_create_round(event, user_id, user_email)
         elif http_method == 'DELETE':
             return handle_delete_round(event, user_id, user_email)
         else:
@@ -76,9 +81,73 @@ def handle_create_round(event, user_id, user_email):
         
         body = json.loads(raw_body)
         
+        # Check for both possible endpoint formats
+        if '/config/' in event.get('path', ''):
+            # Legacy endpoint format /rounds/config/{id}
+            path_parts = event['path'].split('/')
+            config_id = path_parts[3]
+            body['configId'] = config_id
+        
+        # Validate required fields - accept both old and new formats
+        required_fields = ['initialRobotPositions', 'targetPositions']
+        missing_fields = [field for field in required_fields if field not in body]
+        
+        if missing_fields:
+            return create_response(400, {'error': f'Missing required fields: {", ".join(missing_fields)}'})
+        
+        # Generate round ID
+        round_id = f"round_{int(datetime.datetime.now().timestamp() * 1000)}"
+        
+        # Create round item with the expected data structure
+        round_item = {
+            'roundId': round_id,
+            'configId': body.get('configId', ''),
+            'initialRobotPositions': body['initialRobotPositions'],
+            'targetPositions': body['targetPositions'],
+            'authorEmail': user_email,
+            'authorId': user_id,
+            'createdAt': datetime.datetime.now().isoformat(),
+            'isSolved': False
+        }
+        
+        # Add optional fields if present
+        if 'walls' in body:
+            round_item['walls'] = body['walls']
+        if 'targets' in body:
+            round_item['targets'] = body['targets']
+        
+        # Save to DynamoDB
+        rounds_table.put_item(Item=round_item)
+        
+        logger.info(f"Created round: {round_id} with config: {body.get('configId', 'none')}")
+        return create_response(201, round_item)
+        
+    except Exception as e:
+        logger.error(f"Error creating round: {str(e)}")
+        return create_response(500, {'error': 'Failed to create round'})
+
+def handle_create_round_with_config_id(event, user_id, user_email):
+    """Create a new round with configId from URL path"""
+    try:
+        # Extract configId from path /rounds/config/{id}
+        path_parts = event['path'].split('/')
+        config_id = path_parts[3]
+        
+        raw_body = event.get('body')
+        if not raw_body:
+            return create_response(400, {'error': 'Request body is required'})
+        
+        body = json.loads(raw_body)
+        
+        # Add configId from path to body
+        body['configId'] = config_id
+        
         # Validate required fields
-        if 'roundName' not in body or 'puzzleStates' not in body:
-            return create_response(400, {'error': 'Missing required fields: roundName, puzzleStates'})
+        required_fields = ['initialRobotPositions', 'targetPositions']
+        missing_fields = [field for field in required_fields if field not in body]
+        
+        if missing_fields:
+            return create_response(400, {'error': f'Missing required fields: {", ".join(missing_fields)}'})
         
         # Generate round ID
         round_id = f"round_{int(datetime.datetime.now().timestamp() * 1000)}"
@@ -86,21 +155,29 @@ def handle_create_round(event, user_id, user_email):
         # Create round item
         round_item = {
             'roundId': round_id,
-            'roundName': body['roundName'],
-            'puzzleStates': body['puzzleStates'],
+            'configId': config_id,
+            'initialRobotPositions': body['initialRobotPositions'],
+            'targetPositions': body['targetPositions'],
             'authorEmail': user_email,
             'authorId': user_id,
-            'createdAt': datetime.datetime.now().isoformat()
+            'createdAt': datetime.datetime.now().isoformat(),
+            'isSolved': False
         }
+        
+        # Add optional fields if present
+        if 'walls' in body:
+            round_item['walls'] = body['walls']
+        if 'targets' in body:
+            round_item['targets'] = body['targets']
         
         # Save to DynamoDB
         rounds_table.put_item(Item=round_item)
         
-        logger.info(f"Created round: {round_id}")
+        logger.info(f"Created round: {round_id} with config: {config_id}")
         return create_response(201, round_item)
         
     except Exception as e:
-        logger.error(f"Error creating round: {str(e)}")
+        logger.error(f"Error creating round with config ID: {str(e)}")
         return create_response(500, {'error': 'Failed to create round'})
 
 def handle_delete_round(event, user_id, user_email):
