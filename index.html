@@ -148,7 +148,7 @@
             // Production: Load AWS SDK and config
             document.write('<script src="https://sdk.amazonaws.com/js/aws-sdk-2.1590.0.min.js"><\/script>');
             document.write('<script src="https://unpkg.com/amazon-cognito-identity-js@6.3.7/dist/amazon-cognito-identity.min.js"><\/script>');
-            document.write('<script src="js/aws-config.js"><\/script>');
+            document.write('<script src="js/aws-config-v2.js?v=' + Date.now() + '"><\/script>');
         }
         
         // Apply environment-specific body class
@@ -159,7 +159,7 @@
     
     <!-- Application Scripts (Always load) -->
     <script src="js/auth-service.js"></script>
-    <script src="js/api-service.js"></script>
+    <script src="js/api-service.js?v=20250628230000"></script>
     <script src="script.js"></script>
 </body>
 </html>

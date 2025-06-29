@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 
 dynamodb = boto3.resource('dynamodb')
-table = dynamodb.Table(os.environ['TABLE_NAME'])
+table = dynamodb.Table(os.environ['CONFIGURATIONS_TABLE'])
 
 def lambda_handler(event, context):
     """

@@ -64,13 +64,7 @@ def lambda_handler(event, context):
             path_params = event.get('pathParameters') or {}
             round_id = path_params.get('roundId')
             
-            logger.info(f"POST request - Round ID: {round_id}")
-            
-            if not round_id:
-                logger.error("No roundId provided for score submission")
-                return error_response(400, 'roundId is required for score submission')
-            
-            # Parse request body
+            # Parse request body first to potentially get roundId from body
             try:
                 body = event.get('body', '{}')
                 if isinstance(body, str):
@@ -80,11 +74,21 @@ def lambda_handler(event, context):
                     
                 logger.info(f"Score data received: {score_data}")
                 
+                # If no roundId in path, try to get it from request body
+                if not round_id:
+                    round_id = score_data.get('roundId')
+                
             except json.JSONDecodeError as e:
                 logger.error(f"Invalid JSON in request body: {e}")
                 return error_response(400, 'Invalid JSON in request body')
             
-            # POST /scores/{roundId} - Submit score for specific round
+            logger.info(f"POST request - Round ID: {round_id}")
+            
+            if not round_id:
+                logger.error("No roundId provided in path or body for score submission")
+                return error_response(400, 'roundId is required for score submission (in path or body)')
+            
+            # POST /scores or /scores/{roundId} - Submit score for specific round
             return submit_score(user_id, round_id, score_data, user_email)
             
         else:

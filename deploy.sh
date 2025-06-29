@@ -60,8 +60,6 @@ add_to_summary() {
 
 # Deployment detection functions
 detect_infrastructure_changes() {
-    log "${BLUE}🔍 Detecting infrastructure changes...${NC}"
-    
     local stack_exists=false
     if aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$REGION" &>/dev/null; then
         stack_exists=true
@@ -72,12 +70,12 @@ detect_infrastructure_changes() {
         return 0
     fi
     
-    # Check if template has changes by attempting a change set
-    local changeset_name="deployment-check-$(date +%s)"
+    # Check if template needs deployment by attempting changeset creation
+    local changeset_name="deploy-check-$(date +%s)"
     local changeset_output=$(mktemp)
     TEMP_FILES+=("$changeset_output")
     
-    aws cloudformation create-change-set \
+    local changeset_result=$(aws cloudformation create-change-set \
         --stack-name "$STACK_NAME" \
         --change-set-name "$changeset_name" \
         --template-body file://"$TEMPLATE_FILE" \
@@ -85,31 +83,17 @@ detect_infrastructure_changes() {
         --region "$REGION" \
         --parameters ParameterKey=AppName,ParameterValue=robot-puzzle-game \
                      ParameterKey=Environment,ParameterValue=prod \
-        2>&1 > "$changeset_output"
+        2>&1)
     
-    sleep 10  # Wait for changeset creation
+    sleep 5  # Wait for changeset creation
     
-    # Check changeset status
-    local changeset_status=$(aws cloudformation describe-change-set \
+    # Check if changeset has changes
+    local changes_count=$(aws cloudformation describe-change-set \
         --stack-name "$STACK_NAME" \
         --change-set-name "$changeset_name" \
         --region "$REGION" \
-        --query 'Status' \
-        --output text 2>/dev/null)
-    
-    local has_changes="false"
-    if [[ "$changeset_status" == "CREATE_COMPLETE" ]]; then
-        local changes_count=$(aws cloudformation describe-change-set \
-            --stack-name "$STACK_NAME" \
-            --change-set-name "$changeset_name" \
-            --region "$REGION" \
-            --query 'length(Changes)' \
-            --output text 2>/dev/null)
-        
-        if [[ "$changes_count" -gt 0 ]]; then
-            has_changes="true"
-        fi
-    fi
+        --query 'length(Changes)' \
+        --output text 2>/dev/null || echo "0")
     
     # Clean up changeset
     aws cloudformation delete-change-set \
@@ -117,20 +101,21 @@ detect_infrastructure_changes() {
         --change-set-name "$changeset_name" \
         --region "$REGION" &>/dev/null
     
-    if [[ "$has_changes" == "true" ]]; then
+    if [[ "$changes_count" -gt 0 ]]; then
         echo "infrastructure_changes"
     else
         echo "no_infrastructure_changes"
     fi
+    return 0
 }
 
 detect_lambda_changes() {
-    log "${BLUE}🔍 Detecting Lambda function changes...${NC}"
     
     local lambda_functions=(
         "aws/lambda-functions/scores.py:ScoresFunction"
         "aws/lambda-functions/board-configurations.py:BoardConfigurationsFunction"
         "aws/lambda-functions/user-profiles.py:UserProfilesFunction"
+        "aws/lambda-functions/rounds.py:RoundsFunction"
     )
     
     local changes_needed=()
@@ -178,7 +163,6 @@ detect_lambda_changes() {
 }
 
 detect_website_changes() {
-    log "${BLUE}🔍 Detecting website file changes...${NC}"
     
     # Get S3 bucket name
     local bucket_name=$(aws cloudformation describe-stack-resources \
@@ -391,6 +375,9 @@ deploy_lambda_functions() {
                 ;;
             "UserProfilesFunction")
                 function_description="User Profiles Lambda Function"
+                ;;
+            "RoundsFunction")
+                function_description="Rounds Lambda Function"
                 ;;
             *)
                 function_description="Lambda Function ($logical_id)"
@@ -632,8 +619,11 @@ main() {
     
     # Detection phase
     log "${BLUE}🔍 Analyzing what needs to be deployed...${NC}"
+    log "${BLUE}🔍 Detecting infrastructure changes...${NC}"
     local infrastructure_status=$(detect_infrastructure_changes)
+    log "${BLUE}🔍 Detecting Lambda function changes...${NC}"
     local lambda_changes=$(detect_lambda_changes)
+    log "${BLUE}🔍 Detecting website file changes...${NC}"
     local website_changes=$(detect_website_changes)
     
     log "${CYAN}   Infrastructure: $infrastructure_status${NC}"
@@ -656,12 +646,17 @@ main() {
         exit 0
     fi
     
+    log "${BLUE}🚀 Starting selective deployment...${NC}"
+    
     # Deploy infrastructure only if needed
     if [[ "$infrastructure_status" != "no_infrastructure_changes" ]]; then
+        log "${BLUE}📋 Deploying infrastructure changes...${NC}"
         if ! deploy_infrastructure; then
             log "${RED}❌ Infrastructure deployment failed${NC}"
             exit 1
         fi
+    else
+        log "${GREEN}✅ Infrastructure: No changes needed${NC}"
     fi
     
     # Always get stack outputs for subsequent operations

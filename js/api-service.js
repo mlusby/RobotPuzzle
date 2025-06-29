@@ -307,9 +307,15 @@ class ApiService {
     }
 
     async createRound(configId, roundData) {
-        return await this.makeRequest(`/rounds/config/${configId}`, {
+        // Add configId to the round data if not already present
+        const enrichedRoundData = {
+            ...roundData,
+            configId: configId
+        };
+        
+        return await this.makeRequest('/rounds', {
             method: 'POST',
-            body: JSON.stringify(roundData)
+            body: JSON.stringify(enrichedRoundData)
         });
     }
 
