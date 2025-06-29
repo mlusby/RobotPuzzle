@@ -44,6 +44,9 @@ def lambda_handler(event, context):
             elif path.endswith('/user-submitted'):
                 # Handle /rounds/user-submitted
                 return handle_get_user_submitted_rounds(event, user_id, user_email)
+            elif path.endswith('/user-completed'):
+                # Handle /rounds/user-completed (alias for user-submitted)
+                return handle_get_user_submitted_rounds(event, user_id, user_email)
             else:
                 # Handle /rounds
                 return handle_get_rounds(event, user_id, user_email)
