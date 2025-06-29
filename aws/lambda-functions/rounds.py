@@ -35,6 +35,15 @@ def lambda_handler(event, context):
             if '/config/' in path:
                 # Handle /rounds/config/{id}
                 return handle_get_round_config(event, user_id, user_email)
+            elif path.endswith('/solved'):
+                # Handle /rounds/solved
+                return handle_get_solved_rounds(event, user_id, user_email)
+            elif path.endswith('/baseline'):
+                # Handle /rounds/baseline
+                return handle_get_baseline_rounds(event, user_id, user_email)
+            elif path.endswith('/user-submitted'):
+                # Handle /rounds/user-submitted
+                return handle_get_user_submitted_rounds(event, user_id, user_email)
             else:
                 # Handle /rounds
                 return handle_get_rounds(event, user_id, user_email)
@@ -53,6 +62,60 @@ def lambda_handler(event, context):
     except Exception as e:
         logger.error(f"Error processing request: {str(e)}")
         return create_response(500, {'error': 'Internal server error'})
+
+def handle_get_solved_rounds(event, user_id, user_email):
+    """Get all solved rounds"""
+    try:
+        # Query rounds where isSolved = true
+        response = rounds_table.scan(
+            FilterExpression="isSolved = :solved",
+            ExpressionAttributeValues={":solved": True}
+        )
+        rounds = response.get('Items', [])
+        
+        # Convert Decimal objects to regular numbers for JSON serialization
+        rounds = convert_decimals(rounds)
+        
+        logger.info(f"Retrieved {len(rounds)} solved rounds")
+        return create_response(200, rounds)
+        
+    except Exception as e:
+        logger.error(f"Error getting solved rounds: {str(e)}")
+        return create_response(500, {'error': 'Failed to retrieve solved rounds'})
+
+def handle_get_baseline_rounds(event, user_id, user_email):
+    """Get baseline rounds (from baseline configurations)"""
+    try:
+        # For now, return all rounds - in production you'd filter by baseline configurations
+        response = rounds_table.scan()
+        rounds = response.get('Items', [])
+        
+        # Convert Decimal objects to regular numbers for JSON serialization
+        rounds = convert_decimals(rounds)
+        
+        logger.info(f"Retrieved {len(rounds)} baseline rounds")
+        return create_response(200, rounds)
+        
+    except Exception as e:
+        logger.error(f"Error getting baseline rounds: {str(e)}")
+        return create_response(500, {'error': 'Failed to retrieve baseline rounds'})
+
+def handle_get_user_submitted_rounds(event, user_id, user_email):
+    """Get rounds submitted by users (non-baseline)"""
+    try:
+        # For now, return all rounds - in production you'd filter by non-baseline configurations
+        response = rounds_table.scan()
+        rounds = response.get('Items', [])
+        
+        # Convert Decimal objects to regular numbers for JSON serialization
+        rounds = convert_decimals(rounds)
+        
+        logger.info(f"Retrieved {len(rounds)} user-submitted rounds")
+        return create_response(200, rounds)
+        
+    except Exception as e:
+        logger.error(f"Error getting user-submitted rounds: {str(e)}")
+        return create_response(500, {'error': 'Failed to retrieve user-submitted rounds'})
 
 def handle_get_rounds(event, user_id, user_email):
     """Get all rounds, optionally filtered by author"""
