@@ -222,6 +222,9 @@ def success_response(data, status_code=200):
     """
     Return a successful response with CORS headers
     """
+    # Clean data to prevent undefined values in JSON
+    cleaned_data = clean_data_for_json(data)
+    
     return {
         'statusCode': status_code,
         'headers': {
@@ -230,7 +233,7 @@ def success_response(data, status_code=200):
             'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
             'Content-Type': 'application/json'
         },
-        'body': json.dumps(data, default=decimal_default)
+        'body': json.dumps(cleaned_data, default=decimal_default)
     }
 
 def error_response(status_code, message):
@@ -266,8 +269,31 @@ def cors_response():
 
 def decimal_default(obj):
     """
-    JSON encoder for Decimal objects
+    JSON encoder for Decimal objects and other problematic types
     """
     if isinstance(obj, Decimal):
         return float(obj)
+    elif obj is None:
+        return None
+    elif isinstance(obj, (datetime.datetime, datetime.date)):
+        return obj.isoformat()
     raise TypeError(f'Object of type {type(obj)} is not JSON serializable')
+
+def clean_data_for_json(data):
+    """
+    Clean data to ensure JSON serialization doesn't create 'undefined' values
+    """
+    if isinstance(data, list):
+        return [clean_data_for_json(item) for item in data]
+    elif isinstance(data, dict):
+        cleaned = {}
+        for key, value in data.items():
+            if value is None:
+                cleaned[key] = None
+            else:
+                cleaned[key] = clean_data_for_json(value)
+        return cleaned
+    elif isinstance(data, Decimal):
+        return float(data)
+    else:
+        return data
