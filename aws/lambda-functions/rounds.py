@@ -173,8 +173,7 @@ def handle_create_round(event, user_id, user_email):
             'targetPositions': body['targetPositions'],
             'authorEmail': user_email,
             'authorId': user_id,
-            'createdAt': datetime.datetime.now().isoformat(),
-            'isSolved': False
+            'createdAt': datetime.datetime.now().isoformat()
         }
         
         # Add optional fields if present
@@ -227,8 +226,7 @@ def handle_create_round_with_config_id(event, user_id, user_email):
             'targetPositions': body['targetPositions'],
             'authorEmail': user_email,
             'authorId': user_id,
-            'createdAt': datetime.datetime.now().isoformat(),
-            'isSolved': False
+            'createdAt': datetime.datetime.now().isoformat()
         }
         
         # Add optional fields if present
