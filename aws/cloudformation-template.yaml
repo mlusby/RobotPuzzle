@@ -313,6 +313,13 @@ Resources:
       ParentId: !GetAtt ApiGateway.RootResourceId
       PathPart: rounds
 
+  RoundsProxyResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref RoundsResource
+      PathPart: '{proxy+}'
+
   ScoresResource:
     Type: AWS::ApiGateway::Resource
     Properties:
@@ -394,6 +401,32 @@ Resources:
       RestApiId: !Ref ApiGateway
       ResourceId: !Ref RoundsResource
       HttpMethod: GET
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref ApiAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RoundsFunction.Arn}/invocations'
+
+  GetRoundsProxyMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref RoundsProxyResource
+      HttpMethod: GET
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref ApiAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RoundsFunction.Arn}/invocations'
+
+  PostRoundsProxyMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref RoundsProxyResource
+      HttpMethod: POST
       AuthorizationType: COGNITO_USER_POOLS
       AuthorizerId: !Ref ApiAuthorizer
       Integration:
@@ -574,6 +607,8 @@ Resources:
       - PutConfigurationMethod
       - DeleteConfigurationMethod
       - GetBaselineRoundsMethod
+      - GetRoundsProxyMethod
+      - PostRoundsProxyMethod
       - GetLeaderboardMethod
       - PostScoreMethod
       - GetUserProfileMethod

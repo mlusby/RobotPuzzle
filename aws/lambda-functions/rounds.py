@@ -47,6 +47,9 @@ def lambda_handler(event, context):
             elif path.endswith('/user-completed'):
                 # Handle /rounds/user-completed (alias for user-submitted)
                 return handle_get_user_submitted_rounds(event, user_id, user_email)
+            elif '/rounds/' in path and path.count('/') >= 3:
+                # Handle /rounds/{roundId} - get specific round
+                return handle_get_specific_round(event, user_id, user_email)
             else:
                 # Handle /rounds
                 return handle_get_rounds(event, user_id, user_email)
@@ -120,6 +123,34 @@ def handle_get_user_submitted_rounds(event, user_id, user_email):
     except Exception as e:
         logger.error(f"Error getting user-submitted rounds: {str(e)}")
         return create_response(500, {'error': 'Failed to retrieve user-submitted rounds'})
+
+def handle_get_specific_round(event, user_id, user_email):
+    """Get a specific round by ID"""
+    try:
+        # Extract round ID from path
+        path_parts = event['path'].split('/')
+        round_id = path_parts[-1]  # Last part of the path
+        
+        logger.info(f"Getting specific round: {round_id}")
+        
+        # Get the round from database
+        response = rounds_table.get_item(Key={'roundId': round_id})
+        
+        if 'Item' not in response:
+            logger.error(f"Round not found: {round_id}")
+            return create_response(404, {'error': 'Round not found'})
+        
+        round_item = response['Item']
+        
+        # Convert Decimal objects to regular numbers for JSON serialization
+        round_item = convert_decimals(round_item)
+        
+        logger.info(f"Retrieved specific round: {round_id}")
+        return create_response(200, round_item)
+        
+    except Exception as e:
+        logger.error(f"Error getting specific round: {str(e)}")
+        return create_response(500, {'error': 'Failed to retrieve round'})
 
 def handle_get_rounds(event, user_id, user_email):
     """Get all rounds, optionally filtered by author"""
@@ -310,13 +341,21 @@ def convert_decimals(obj):
     if isinstance(obj, list):
         return [convert_decimals(item) for item in obj]
     elif isinstance(obj, dict):
-        return {key: convert_decimals(value) for key, value in obj.items()}
+        cleaned = {}
+        for key, value in obj.items():
+            if value is None:
+                cleaned[key] = None
+            else:
+                cleaned[key] = convert_decimals(value)
+        return cleaned
     elif isinstance(obj, Decimal):
         # Convert to int if it's a whole number, otherwise to float
         if obj % 1 == 0:
             return int(obj)
         else:
             return float(obj)
+    elif isinstance(obj, (datetime.datetime, datetime.date)):
+        return obj.isoformat()
     else:
         return obj
 
