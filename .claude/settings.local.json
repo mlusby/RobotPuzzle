@@ -38,7 +38,8 @@
       "Bash(aws apigateway get-gateway-responses:*)",
       "Bash(aws apigateway get-request-validators:*)",
       "Bash(aws apigateway get-rest-apis:*)",
-      "Bash(aws apigateway get-authorizer:*)"
+      "Bash(aws apigateway get-authorizer:*)",
+      "Bash(python3:*)"
     ],
     "deny": []
   }

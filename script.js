@@ -782,6 +782,21 @@ class RobotPuzzleGame {
             const round = await apiService.getRandomSolvedRound();
             
             console.log('🔍 Solved rounds API response:', round);
+            console.log('🔍 Is round an array?', Array.isArray(round));
+            console.log('🔍 Round type:', typeof round);
+            if (Array.isArray(round)) {
+                console.log('🚨 ERROR: Received array of rounds instead of single round!');
+                console.log('🔍 Array length:', round.length);
+                console.log('🔍 First item:', round[0]);
+                // This shouldn't happen anymore with the fixed API call
+                round = round[0];
+            }
+            
+            // Deep log the robot positions to see what's wrong
+            console.log('🤖 initialRobotPositions type:', typeof round?.initialRobotPositions);
+            console.log('🤖 initialRobotPositions keys:', Object.keys(round?.initialRobotPositions || {}));
+            console.log('🤖 initialRobotPositions full:', round?.initialRobotPositions);
+            console.log('🎯 targetPositions:', round?.targetPositions);
             
             if (!round) {
                 console.log('❌ No solved rounds found in database');
@@ -819,12 +834,35 @@ class RobotPuzzleGame {
         this.moveCount = 0;
         this.moveHistory = [];
         
+        // Validate round data
+        if (!round.initialRobotPositions || typeof round.initialRobotPositions !== 'object') {
+            console.error('Invalid round data: initialRobotPositions missing or invalid');
+            console.error('Full round data:', round);
+            console.error('Available properties:', Object.keys(round || {}));
+            
+            // Check for alternative field names that might exist
+            const alternativeFields = ['robotPositions', 'startingPositions', 'positions'];
+            for (const field of alternativeFields) {
+                if (round[field]) {
+                    console.log(`Found alternative field '${field}':`, round[field]);
+                    console.log('Consider using this field instead or updating the data structure');
+                }
+            }
+            
+            throw new Error(`Round data is invalid - missing robot positions. Round ID: ${round.roundId || 'unknown'}`);
+        }
+        
         // Set up the board from round data
         this.walls = new Set(round.walls || []);
         
         // Set robot positions from round
         this.robots = round.initialRobotPositions;
-        this.initialRobots = JSON.parse(JSON.stringify(this.robots));
+        
+        // Create a safe deep copy of robot positions
+        this.initialRobots = {};
+        for (const [color, position] of Object.entries(this.robots)) {
+            this.initialRobots[color] = { x: position.x, y: position.y, color: color };
+        }
         
         // Set target from round (preserved state)
         const targetData = round.targetPositions;

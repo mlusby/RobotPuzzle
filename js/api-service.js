@@ -371,7 +371,15 @@ class ApiService {
                 return null;
             }
 
+            // Pick a random round from the list
             const randomRound = solvedRounds[Math.floor(Math.random() * solvedRounds.length)];
+            
+            // Get the specific round by ID to ensure we get complete data
+            if (randomRound.roundId) {
+                console.log('🔍 Getting specific round:', randomRound.roundId);
+                return await this.getRound(randomRound.roundId);
+            }
+            
             return randomRound;
         } catch (error) {
             console.error('Failed to get random solved round:', error);

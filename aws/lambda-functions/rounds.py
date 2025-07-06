@@ -28,6 +28,8 @@ def lambda_handler(event, context):
         user_email = claims.get('email')
         
         logger.info(f"Processing {http_method} request for path: {path}")
+        logger.info(f"Path parts: {path.split('/')}")
+        logger.info(f"Path length: {len(path.split('/'))}")
         logger.info(f"User ID: {user_id}, Email: {user_email}")
         
         # Handle different HTTP methods and paths
@@ -47,7 +49,7 @@ def lambda_handler(event, context):
             elif path.endswith('/user-completed'):
                 # Handle /rounds/user-completed (alias for user-submitted)
                 return handle_get_user_submitted_rounds(event, user_id, user_email)
-            elif '/rounds/' in path and path.count('/') >= 3:
+            elif path.startswith('/rounds/') and len(path.split('/')) > 2 and not path.endswith('/config') and not path.endswith('/solved') and not path.endswith('/baseline') and not path.endswith('/user-submitted') and not path.endswith('/user-completed'):
                 # Handle /rounds/{roundId} - get specific round
                 return handle_get_specific_round(event, user_id, user_email)
             else:
