@@ -209,11 +209,8 @@ detect_website_changes() {
         fi
     fi
     
-    if [[ "$changes_detected" == "true" ]]; then
-        echo "website_changes"
-    else
-        echo "no_website_changes"
-    fi
+    # Always deploy website files for now to ensure changes are uploaded
+    echo "website_changes"
 }
 
 # Deployment functions

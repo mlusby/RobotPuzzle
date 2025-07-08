@@ -30,7 +30,15 @@ def lambda_handler(event, context):
             elif http_method == 'POST':
                 return create_configuration(user_id, json.loads(event['body']))
         elif path.startswith('/configurations/'):
-            config_id = event['pathParameters']['configId']
+            print(f"DEBUG: pathParameters = {event.get('pathParameters')}")
+            print(f"DEBUG: path = {path}")
+            
+            config_id = event['pathParameters']['configId'] if event.get('pathParameters') else None
+            print(f"DEBUG: extracted config_id = {config_id}")
+            
+            if not config_id:
+                return error_response(400, 'Missing configId parameter')
+                
             if http_method == 'GET':
                 return get_configuration(user_id, config_id)
             elif http_method == 'PUT':
@@ -76,14 +84,26 @@ def get_configuration(user_id, config_id):
     Get a specific board configuration
     """
     try:
+        # First try to get the configuration for the current user
         response = table.get_item(
             Key={'userId': user_id, 'configId': config_id}
         )
         
         if 'Item' not in response:
-            return error_response(404, 'Configuration not found')
+            # If not found for current user, scan for the configuration (it might belong to another user)
+            # This is needed for cross-user access to configurations used in rounds
+            scan_response = table.scan(
+                FilterExpression='configId = :config_id',
+                ExpressionAttributeValues={':config_id': config_id}
+            )
+            
+            if not scan_response['Items']:
+                return error_response(404, 'Configuration not found')
+            
+            item = scan_response['Items'][0]  # Take the first match
+        else:
+            item = response['Item']
         
-        item = response['Item']
         configuration = {
             'walls': item.get('walls', []),
             'targets': item.get('targets', []),

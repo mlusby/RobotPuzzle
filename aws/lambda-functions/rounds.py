@@ -119,6 +119,13 @@ def handle_get_user_submitted_rounds(event, user_id, user_email):
         # Convert Decimal objects to regular numbers for JSON serialization
         rounds = convert_decimals(rounds)
         
+        # Validate that all rounds have configId
+        rounds_with_missing_config = [r for r in rounds if not r.get('configId')]
+        if rounds_with_missing_config:
+            logger.error(f"Found {len(rounds_with_missing_config)} rounds missing configId")
+            for round_item in rounds_with_missing_config:
+                logger.error(f"Round {round_item.get('roundId', 'unknown')} missing configId")
+        
         logger.info(f"Retrieved {len(rounds)} user-submitted rounds")
         return create_response(200, rounds)
         
@@ -146,6 +153,11 @@ def handle_get_specific_round(event, user_id, user_email):
         
         # Convert Decimal objects to regular numbers for JSON serialization
         round_item = convert_decimals(round_item)
+        
+        # Validate that configId is present
+        if not round_item.get('configId'):
+            logger.error(f"Round {round_id} is missing configId - data integrity issue")
+            return create_response(500, {'error': 'Round data integrity issue: missing configId'})
         
         logger.info(f"Retrieved specific round: {round_id}")
         return create_response(200, round_item)
@@ -189,8 +201,8 @@ def handle_create_round(event, user_id, user_email):
             body['configId'] = config_id
         
         # Validate required fields - accept both old and new formats
-        required_fields = ['initialRobotPositions', 'targetPositions']
-        missing_fields = [field for field in required_fields if field not in body]
+        required_fields = ['initialRobotPositions', 'targetPositions', 'configId']
+        missing_fields = [field for field in required_fields if field not in body or not body[field]]
         
         if missing_fields:
             return create_response(400, {'error': f'Missing required fields: {", ".join(missing_fields)}'})
@@ -242,8 +254,8 @@ def handle_create_round_with_config_id(event, user_id, user_email):
         body['configId'] = config_id
         
         # Validate required fields
-        required_fields = ['initialRobotPositions', 'targetPositions']
-        missing_fields = [field for field in required_fields if field not in body]
+        required_fields = ['initialRobotPositions', 'targetPositions', 'configId']
+        missing_fields = [field for field in required_fields if field not in body or not body[field]]
         
         if missing_fields:
             return create_response(400, {'error': f'Missing required fields: {", ".join(missing_fields)}'})

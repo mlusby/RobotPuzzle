@@ -8,6 +8,7 @@ class RobotPuzzleGame {
         this.currentRound = null;
         this.moveHistory = [];
         this.personalBest = null;
+        this.gameInitialized = false;
         
         this.dragState = {
             isDragging: false,
@@ -792,6 +793,19 @@ class RobotPuzzleGame {
                 round = round[0];
             }
             
+            // Validate that configId is present
+            console.log('🔍 Round configId check:', round.configId);
+            console.log('🔍 Round configId type:', typeof round.configId);
+            console.log('🔍 Round configId truthy:', !!round.configId);
+            console.log('🔍 Full round keys:', Object.keys(round));
+            
+            if (!round.configId || round.configId === '') {
+                console.error('🚨 ERROR: Round is missing configId!');
+                console.error('🔍 Round data:', round);
+                throw new Error(`Round ${round.roundId || 'unknown'} is missing configId - cannot load walls`);
+            }
+            console.log('✅ Round has configId:', round.configId);
+            
             // Deep log the robot positions to see what's wrong
             console.log('🤖 initialRobotPositions type:', typeof round?.initialRobotPositions);
             console.log('🤖 initialRobotPositions keys:', Object.keys(round?.initialRobotPositions || {}));
@@ -830,6 +844,10 @@ class RobotPuzzleGame {
     }
 
     async loadRound(round) {
+        console.log('🎯 Starting loadRound with round:', round.roundId);
+        console.log('🎯 Round object keys:', Object.keys(round));
+        console.log('🎯 Round configId at start:', round.configId);
+        
         this.currentRound = round;
         this.moveCount = 0;
         this.moveHistory = [];
@@ -853,7 +871,13 @@ class RobotPuzzleGame {
         }
         
         // Set up the board from round data
+        // Use walls directly from round data (they're already stored there)
+        console.log('🔧 Loading walls from round data');
+        console.log('🔍 Round walls:', round.walls);
         this.walls = new Set(round.walls || []);
+        
+        console.log('🔍 Final walls set size:', this.walls.size);
+        console.log('🔍 Final walls preview:', Array.from(this.walls).slice(0, 10));
         
         // Set robot positions from round
         this.robots = round.initialRobotPositions;
@@ -1157,9 +1181,11 @@ class RobotPuzzleGame {
             this.loadCompetitiveRounds();
         } else {
             competitiveManager.style.display = 'none';
+            // Only load new round if this is a user-initiated change (not during initialization)
+            if (this.gameInitialized) {
+                this.loadNewRound();
+            }
         }
-        
-        this.loadNewRound();
     }
 
     async loadCompetitiveRounds() {
@@ -1436,10 +1462,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Wait for auth service to be fully ready
             await new Promise(resolve => setTimeout(resolve, 2000));
             await game.loadNewRound();
+            game.gameInitialized = true;
         } catch (error) {
             console.error('Failed to load initial round, using fallback:', error);
             // Fallback to original behavior - just show the game without rounds
             console.log('Game loaded with default configuration');
+            game.gameInitialized = true;
         }
     }, 1000);
 });
