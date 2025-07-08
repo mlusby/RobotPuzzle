@@ -871,10 +871,31 @@ class RobotPuzzleGame {
         }
         
         // Set up the board from round data
-        // Use walls directly from round data (they're already stored there)
-        console.log('🔧 Loading walls from round data');
-        console.log('🔍 Round walls:', round.walls);
-        this.walls = new Set(round.walls || []);
+        // If round has walls stored directly, use them. Otherwise load from configId
+        if (round.walls && round.walls.length > 0) {
+            console.log('🔧 Loading walls from round data');
+            console.log('🔍 Round walls:', round.walls);
+            this.walls = new Set(round.walls);
+        } else if (round.configId) {
+            console.log('🔧 Loading walls from configuration:', round.configId);
+            try {
+                const config = await apiService.getConfiguration(round.configId);
+                console.log('🔍 Configuration response:', config);
+                if (config && config.walls) {
+                    this.walls = new Set(config.walls);
+                    console.log('✅ Loaded walls from configuration:', config.walls.length, 'walls');
+                } else {
+                    console.warn('⚠️ Configuration has no walls');
+                    this.walls = new Set();
+                }
+            } catch (error) {
+                console.error('❌ Failed to load configuration walls:', error);
+                this.walls = new Set();
+            }
+        } else {
+            console.log('🔍 No walls or configId found, using empty wall set');
+            this.walls = new Set();
+        }
         
         console.log('🔍 Final walls set size:', this.walls.size);
         console.log('🔍 Final walls preview:', Array.from(this.walls).slice(0, 10));
