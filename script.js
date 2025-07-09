@@ -1069,7 +1069,7 @@ class RobotPuzzleGame {
         }
     }
 
-    displayLeaderboard(scores) {
+    async displayLeaderboard(scores) {
         const modal = document.getElementById('leaderboard-modal');
         const content = document.getElementById('leaderboard-content');
         
@@ -1081,6 +1081,9 @@ class RobotPuzzleGame {
             content.innerHTML = roundInfo + '<p>No scores recorded for this round yet. Be the first to compete!</p>';
         } else {
             const currentUserId = authService.getCurrentUser().sub;
+            
+            // Fetch usernames for all users in the leaderboard
+            const userProfiles = await this.fetchCurrentUsernames(scores.map(score => score.userId));
             
             let tableHTML = roundInfo + `
                 <table class="leaderboard-table">
@@ -1099,10 +1102,21 @@ class RobotPuzzleGame {
                 const isCurrentUser = score.userId === currentUserId;
                 const completedDate = new Date(score.completedAt).toLocaleDateString();
                 
+                // Get display name: username if available, then email, then fallback
+                let playerName = 'Player';
+                const currentProfile = userProfiles[score.userId];
+                if (currentProfile?.username) {
+                    playerName = currentProfile.username;
+                } else if (score.userEmail) {
+                    playerName = score.userEmail;
+                } else if (isCurrentUser) {
+                    playerName = 'You';
+                }
+                
                 tableHTML += `
                     <tr class="${isCurrentUser ? 'current-user' : ''}">
                         <td class="leaderboard-rank">${index + 1}</td>
-                        <td>${isCurrentUser ? 'You' : 'Player'}</td>
+                        <td>${playerName}</td>
                         <td class="leaderboard-moves">${score.moves}</td>
                         <td>${completedDate}</td>
                     </tr>
@@ -1213,6 +1227,7 @@ class RobotPuzzleGame {
         try {
             const rounds = await apiService.getUserCompletedRounds();
             const selector = document.getElementById('competitive-rounds-selector');
+            const deleteBtn = document.getElementById('delete-round-btn');
             
             // Clear existing options except the first one
             selector.innerHTML = '<option value="">Select a round...</option>';
@@ -1225,8 +1240,23 @@ class RobotPuzzleGame {
                     selector.appendChild(option);
                 });
             }
+            
+            // Show/hide delete button based on user permissions
+            this.updateDeleteButtonVisibility();
         } catch (error) {
             console.error('Failed to load competitive rounds:', error);
+        }
+    }
+    
+    updateDeleteButtonVisibility() {
+        const deleteBtn = document.getElementById('delete-round-btn');
+        const user = authService.getCurrentUser();
+        
+        // Only show delete button for mlusby@gmail.com
+        if (user && user.email === 'mlusby@gmail.com') {
+            deleteBtn.style.display = 'inline-block';
+        } else {
+            deleteBtn.style.display = 'none';
         }
     }
 
@@ -1246,6 +1276,12 @@ class RobotPuzzleGame {
     }
 
     async deleteCompetitiveRound() {
+        const user = authService.getCurrentUser();
+        if (!user || user.email !== 'mlusby@gmail.com') {
+            alert('Only administrators can delete rounds.');
+            return;
+        }
+        
         const roundId = document.getElementById('competitive-rounds-selector').value;
         if (!roundId) {
             alert('Please select a round to delete.');
@@ -1257,6 +1293,7 @@ class RobotPuzzleGame {
         }
         
         try {
+            console.log('🗑️ Deleting round:', roundId);
             await apiService.deleteRound(roundId);
             alert('Round deleted successfully.');
             this.loadCompetitiveRounds(); // Refresh the list
@@ -1306,11 +1343,14 @@ class RobotPuzzleGame {
             const isCurrentUser = score.userId === currentUserId;
             const completedDate = new Date(score.completedAt).toLocaleDateString();
             
-            // Use current username from profiles, not historical username from score
+            // Get display name: username if available, then email, then fallback
             let playerName = 'Player';
             const currentProfile = userProfiles[score.userId];
+            
             if (currentProfile?.username) {
                 playerName = currentProfile.username;
+            } else if (score.userEmail) {
+                playerName = score.userEmail;
             } else if (isCurrentUser) {
                 playerName = 'You';
             }
@@ -1427,43 +1467,21 @@ class RobotPuzzleGame {
     }
 
     async fetchCurrentUsernames(userIds) {
-        // For local development, we only have one user profile
-        if (ENV.isDevelopment()) {
-            const profiles = {};
-            for (const userId of userIds) {
-                if (userId === 'local-user-123') {
-                    try {
-                        profiles[userId] = await apiService.getUserProfileLocal();
-                    } catch (error) {
-                        console.error('Failed to fetch profile for local user:', error);
-                        profiles[userId] = null;
-                    }
-                } else {
-                    profiles[userId] = null; // Unknown user in local dev
-                }
+        console.log('📊 Loading usernames for leaderboard');
+        const profiles = {};
+        
+        // Fetch usernames for all userIds using the new API endpoint
+        for (const userId of userIds) {
+            try {
+                const userInfo = await apiService.getUsernameByUserId(userId);
+                profiles[userId] = userInfo;
+            } catch (error) {
+                console.error(`Failed to fetch username for user ${userId}:`, error);
+                profiles[userId] = null;
             }
-            return profiles;
-        } else {
-            // In production, we'd need an API endpoint to fetch multiple user profiles
-            // For now, return empty profiles for non-current users
-            const currentUserId = authService.getCurrentUser().sub;
-            const profiles = {};
-            
-            for (const userId of userIds) {
-                if (userId === currentUserId) {
-                    try {
-                        profiles[userId] = await apiService.getUserProfile();
-                    } catch (error) {
-                        console.error('Failed to fetch current user profile:', error);
-                        profiles[userId] = null;
-                    }
-                } else {
-                    // TODO: Implement bulk user profile fetching API
-                    profiles[userId] = null;
-                }
-            }
-            return profiles;
         }
+        
+        return profiles;
     }
 }
 

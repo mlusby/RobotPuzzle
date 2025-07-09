@@ -308,14 +308,17 @@ def handle_delete_round(event, user_id, user_email):
         
         round_item = response['Item']
         
-        # Check if user is the author
-        if round_item.get('authorEmail') != user_email:
+        # Check if user is the author or is mlusby@gmail.com (admin)
+        is_author = round_item.get('authorEmail') == user_email
+        is_admin = user_email == 'mlusby@gmail.com'
+        
+        if not is_author and not is_admin:
             return create_response(403, {'error': 'You can only delete your own rounds'})
         
         # Delete the round
         rounds_table.delete_item(Key={'roundId': round_id})
         
-        logger.info(f"Deleted round: {round_id}")
+        logger.info(f"Deleted round: {round_id} by {user_email} (admin: {is_admin}, author: {is_author})")
         return create_response(200, {'message': 'Round deleted successfully'})
         
     except Exception as e:

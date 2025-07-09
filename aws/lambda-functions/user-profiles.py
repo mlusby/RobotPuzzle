@@ -45,9 +45,18 @@ def lambda_handler(event, context):
             logger.error("No user ID found in JWT claims")
             return error_response(401, 'Unauthorized: No user ID found')
         
-        # Route to appropriate handler based on method
+        # Route to appropriate handler based on method and path
         if http_method == 'GET':
-            return get_user_profile(user_id, user_email)
+            # Check if this is a username lookup request: /user/username/{userId}
+            if '/user/username/' in path:
+                # Extract target userId from path
+                path_parts = path.split('/')
+                target_user_id = path_parts[-1]  # Last part is the userId
+                logger.info(f"Username lookup request for userId: {target_user_id}")
+                return get_username_by_user_id(target_user_id)
+            else:
+                # Regular profile request: /user/profile
+                return get_user_profile(user_id, user_email)
         elif http_method == 'PUT':
             body = json.loads(event.get('body', '{}'))
             return update_user_profile(user_id, user_email, body)
@@ -157,6 +166,40 @@ def update_user_profile(user_id, user_email, profile_data):
     except Exception as e:
         logger.error(f"Error updating user profile: {str(e)}")
         return error_response(500, f'Failed to update user profile: {str(e)}')
+
+def get_username_by_user_id(target_user_id):
+    """
+    Get username for a specific userId (public endpoint for leaderboards)
+    Returns only the username and email (public info), not full profile
+    """
+    logger.info(f"Getting username for userId: {target_user_id}")
+    
+    try:
+        response = profiles_table.get_item(Key={'userId': target_user_id})
+        
+        if 'Item' in response:
+            profile = response['Item']
+            # Return only public information
+            public_info = {
+                'userId': target_user_id,
+                'username': profile.get('username'),
+                'email': profile.get('email')  # Include email as fallback
+            }
+            logger.info(f"Found profile for user {target_user_id}, username: {profile.get('username')}")
+        else:
+            # User has no profile, return minimal info
+            public_info = {
+                'userId': target_user_id,
+                'username': None,
+                'email': None
+            }
+            logger.info(f"No profile found for user {target_user_id}")
+        
+        return success_response(public_info)
+        
+    except Exception as e:
+        logger.error(f"Error getting username for user {target_user_id}: {str(e)}")
+        return error_response(500, f'Failed to retrieve username: {str(e)}')
 
 def success_response(data):
     """Return a successful API response"""

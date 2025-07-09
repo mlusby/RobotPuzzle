@@ -565,6 +565,23 @@ class ApiService {
         return await this.makeRequest('/user/profile');
     }
 
+    async getUsernameByUserId(userId) {
+        if (this.isLocalDev) {
+            // In local dev, we can only get the current user's profile
+            if (userId === 'local-user-123') {
+                const profile = await this.getUserProfileLocal();
+                return {
+                    userId: userId,
+                    username: profile?.username || null,
+                    email: profile?.email || null
+                };
+            }
+            return { userId: userId, username: null, email: null };
+        }
+        
+        return await this.makeRequest(`/user/username/${userId}`);
+    }
+
     async updateUserProfile(profileData) {
         if (this.isLocalDev) {
             return this.updateUserProfileLocal(profileData);
