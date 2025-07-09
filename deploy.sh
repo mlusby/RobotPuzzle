@@ -12,6 +12,11 @@ REGION="us-east-1"
 DEPLOYMENT_TIMEOUT=1800
 CHECK_INTERVAL=30
 
+# Custom Domain Configuration (Optional)
+# Set these variables to enable HTTPS with your custom domain
+CUSTOM_DOMAIN=""  # e.g., "puzzle.yourdomain.com"
+CERTIFICATE_ARN=""  # e.g., "arn:aws:acm:us-east-1:123456789012:certificate/12345678-1234-1234-1234-123456789012"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -262,14 +267,21 @@ deploy_infrastructure() {
     local deploy_output=$(mktemp)
     TEMP_FILES+=("$deploy_output")
     
+    # Build parameter overrides
+    local params="AppName=robot-puzzle-game Environment=prod"
+    if [[ -n "$CUSTOM_DOMAIN" ]]; then
+        params="$params DomainName=$CUSTOM_DOMAIN"
+    fi
+    if [[ -n "$CERTIFICATE_ARN" ]]; then
+        params="$params CertificateArn=$CERTIFICATE_ARN"
+    fi
+    
     aws cloudformation deploy \
         --template-file "$TEMPLATE_FILE" \
         --stack-name "$STACK_NAME" \
         --capabilities CAPABILITY_NAMED_IAM \
         --region "$REGION" \
-        --parameter-overrides \
-            AppName=robot-puzzle-game \
-            Environment=prod \
+        --parameter-overrides $params \
         --no-fail-on-empty-changeset 2>&1 | tee "$deploy_output"
     
     local deploy_exit_code=${PIPESTATUS[0]}
@@ -430,6 +442,7 @@ upload_website_files() {
         "script.js"
         "favicon.svg"
         "error.html"
+        "robots_loading.png"
     )
     
     local uploaded=0
@@ -484,6 +497,20 @@ get_stack_outputs() {
         --stack-name "$STACK_NAME" \
         --region "$REGION" \
         --query 'Stacks[0].Outputs[?OutputKey==`UserPoolClientId`].OutputValue' \
+        --output text 2>/dev/null)
+    
+    # Get CloudFront URL if available
+    CLOUDFRONT_URL=$(aws cloudformation describe-stacks \
+        --stack-name "$STACK_NAME" \
+        --region "$REGION" \
+        --query 'Stacks[0].Outputs[?OutputKey==`CloudFrontURL`].OutputValue' \
+        --output text 2>/dev/null)
+    
+    # Get Custom Domain URL if available
+    CUSTOM_DOMAIN_URL=$(aws cloudformation describe-stacks \
+        --stack-name "$STACK_NAME" \
+        --region "$REGION" \
+        --query 'Stacks[0].Outputs[?OutputKey==`CustomDomainURL`].OutputValue' \
         --output text 2>/dev/null)
 }
 
@@ -575,7 +602,26 @@ show_deployment_summary() {
         echo -e "   • $item"
     done
     
-    if [[ -n "$WEBSITE_URL" ]]; then
+    # Show URLs in priority order: Custom Domain > CloudFront > S3
+    if [[ -n "$CUSTOM_DOMAIN_URL" ]]; then
+        echo -e "\n${GREEN}🌐 Production URL (HTTPS Custom Domain):${NC}"
+        echo -e "   ${CYAN}${CUSTOM_DOMAIN_URL}${NC}"
+        if [[ -n "$CLOUDFRONT_URL" ]]; then
+            echo -e "\n${BLUE}🌀 CloudFront URL (Alternative):${NC}"
+            echo -e "   ${CYAN}${CLOUDFRONT_URL}${NC}"
+        fi
+        if [[ -n "$WEBSITE_URL" ]]; then
+            echo -e "\n${YELLOW}📦 S3 Direct URL (Development):${NC}"
+            echo -e "   ${CYAN}${WEBSITE_URL}${NC}"
+        fi
+    elif [[ -n "$CLOUDFRONT_URL" ]]; then
+        echo -e "\n${GREEN}🌐 Production URL (HTTPS CloudFront):${NC}"
+        echo -e "   ${CYAN}${CLOUDFRONT_URL}${NC}"
+        if [[ -n "$WEBSITE_URL" ]]; then
+            echo -e "\n${YELLOW}📦 S3 Direct URL (Development):${NC}"
+            echo -e "   ${CYAN}${WEBSITE_URL}${NC}"
+        fi
+    elif [[ -n "$WEBSITE_URL" ]]; then
         echo -e "\n${GREEN}🌐 Production URL:${NC}"
         echo -e "   ${CYAN}${WEBSITE_URL}${NC}"
     fi

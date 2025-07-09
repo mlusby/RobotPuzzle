@@ -6,21 +6,101 @@
 
 body {
     font-family: 'Arial', sans-serif;
-    background-color: #f0f0f0;
+    background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
     display: flex;
     justify-content: center;
     align-items: center;
     min-height: 100vh;
     padding: 20px;
+    color: #e2e8f0;
+}
+
+/* Loading Screen Styles */
+.loading-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+}
+
+.loading-content {
+    background: rgba(45, 55, 72, 0.95);
+    border: 1px solid rgba(0, 212, 255, 0.2);
+    border-radius: 15px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    padding: 40px;
+    text-align: center;
+    max-width: 400px;
+    width: 90%;
+    backdrop-filter: blur(10px);
+}
+
+.loading-image {
+    width: 120px;
+    height: 120px;
+    object-fit: contain;
+    margin-bottom: 20px;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.loading-content h2 {
+    color: #e2e8f0;
+    margin-bottom: 10px;
+    font-size: 24px;
+    font-weight: 600;
+}
+
+.loading-content p {
+    color: #a0aec0;
+    margin-bottom: 30px;
+    font-size: 16px;
+}
+
+.loading-spinner {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+}
+
+.spinner-dot {
+    width: 12px;
+    height: 12px;
+    background-color: #00d4ff;
+    border-radius: 50%;
+    animation: loading-bounce 1.4s ease-in-out infinite both;
+}
+
+.spinner-dot:nth-child(1) { animation-delay: -0.32s; }
+.spinner-dot:nth-child(2) { animation-delay: -0.16s; }
+.spinner-dot:nth-child(3) { animation-delay: 0s; }
+
+@keyframes loading-bounce {
+    0%, 80%, 100% {
+        transform: scale(0.8);
+        opacity: 0.5;
+    }
+    40% {
+        transform: scale(1);
+        opacity: 1;
+    }
 }
 
 .game-container {
-    background: white;
+    background: rgba(45, 55, 72, 0.95);
+    border: 1px solid rgba(0, 212, 255, 0.2);
     border-radius: 10px;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
     padding: 20px;
     max-width: 600px;
     width: 100%;
+    backdrop-filter: blur(10px);
 }
 
 .game-header {
@@ -29,8 +109,9 @@ body {
 }
 
 .game-header h1 {
-    color: #333;
+    color: #e2e8f0;
     margin-bottom: 15px;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 .game-info {
@@ -46,7 +127,7 @@ body {
     align-items: center;
     gap: 10px;
     font-weight: bold;
-    color: #555;
+    color: #e2e8f0;
 }
 
 .target-preview {
@@ -76,7 +157,7 @@ body {
 
 #user-email {
     font-size: 12px;
-    color: #666;
+    color: #a0aec0;
     font-style: italic;
     cursor: pointer;
     transition: color 0.3s ease;
@@ -84,13 +165,13 @@ body {
 }
 
 #user-email:hover {
-    color: #667eea;
-    border-bottom-color: #667eea;
+    color: #00d4ff;
+    border-bottom-color: #00d4ff;
 }
 
 .move-counter {
     font-weight: bold;
-    color: #333;
+    color: #e2e8f0;
     font-size: 18px;
 }
 
@@ -126,13 +207,13 @@ body {
 }
 
 .game-btn.primary {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #00d4ff 0%, #0066cc 100%);
     color: white;
 }
 
 .game-btn.primary:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+    box-shadow: 0 4px 8px rgba(0, 212, 255, 0.3);
 }
 
 .game-btn.secondary {
@@ -191,32 +272,34 @@ body {
     gap: 1px;
     width: 480px;
     height: 480px;
-    background-color: #333;
-    border: 3px solid #333;
+    background-color: #1a202c;
+    border: 3px solid #00d4ff;
     position: relative;
     user-select: none;
     touch-action: none;
+    box-shadow: 0 0 20px rgba(0, 212, 255, 0.3);
 }
 
 .square {
-    background-color: white;
+    background-color: #4a5568;
     position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
     transition: background-color 0.1s ease;
+    border: 1px solid rgba(0, 212, 255, 0.3);
 }
 
 .square.center-wall {
-    background-color: #666;
+    background-color: #2d3748;
 }
 
 .square.path-preview {
-    background-color: rgba(0, 123, 255, 0.1);
+    background-color: rgba(0, 212, 255, 0.2);
 }
 
 .square.path-end {
-    background-color: rgba(0, 123, 255, 0.3);
+    background-color: rgba(0, 212, 255, 0.4);
 }
 
 .robot {
@@ -261,29 +344,29 @@ body {
 .target-square {
     position: absolute;
     pointer-events: none;
-    z-index: 5;
-    background: radial-gradient(circle, rgba(255, 255, 255, 0.9) 30%, transparent 30%);
+    z-index: 1;
+    background: radial-gradient(circle, rgba(0, 212, 255, 0.8) 30%, transparent 30%);
     background-size: 6px 6px;
-    border: 2px solid #333;
+    border: 2px solid #00d4ff;
     border-radius: 3px;
-    opacity: 0.8;
+    opacity: 0.6;
     box-sizing: border-box;
 }
 
 .wall-top {
-    border-top: 4px solid #333 !important;
+    border-top: 4px solid #00d4ff !important;
 }
 
 .wall-bottom {
-    border-bottom: 4px solid #333 !important;
+    border-bottom: 4px solid #00d4ff !important;
 }
 
 .wall-left {
-    border-left: 4px solid #333 !important;
+    border-left: 4px solid #00d4ff !important;
 }
 
 .wall-right {
-    border-right: 4px solid #333 !important;
+    border-right: 4px solid #00d4ff !important;
 }
 
 @media (max-width: 600px) {
@@ -328,15 +411,16 @@ body {
 
 .board-selector label {
     font-weight: bold;
-    color: #555;
+    color: #e2e8f0;
 }
 
 .board-selector select,
 .competitive-rounds-manager select {
     padding: 8px 12px;
-    border: 2px solid #ddd;
+    border: 2px solid rgba(0, 212, 255, 0.3);
     border-radius: 6px;
-    background-color: white;
+    background-color: rgba(45, 55, 72, 0.9);
+    color: #e2e8f0;
     font-size: 14px;
     transition: border-color 0.3s ease;
 }
@@ -344,7 +428,7 @@ body {
 .board-selector select:focus,
 .competitive-rounds-manager select:focus {
     outline: none;
-    border-color: #667eea;
+    border-color: #00d4ff;
 }
 
 .competitive-rounds-manager {
@@ -356,7 +440,7 @@ body {
 
 .competitive-rounds-manager label {
     font-weight: bold;
-    color: #555;
+    color: #e2e8f0;
     min-width: 140px;
 }
 
@@ -370,7 +454,7 @@ body {
 
 .personal-best {
     font-size: 0.9em;
-    color: #666;
+    color: #a0aec0;
     font-style: italic;
 }
 
@@ -426,16 +510,18 @@ body {
 .leaderboard-table td {
     padding: 8px 12px;
     text-align: left;
-    border-bottom: 1px solid #ddd;
+    border-bottom: 1px solid rgba(0, 212, 255, 0.2);
+    color: #e2e8f0;
 }
 
 .leaderboard-table th {
-    background-color: #f5f5f5;
+    background-color: rgba(0, 212, 255, 0.1);
     font-weight: bold;
+    color: #00d4ff;
 }
 
 .leaderboard-table tr:hover {
-    background-color: #f9f9f9;
+    background-color: rgba(0, 212, 255, 0.1);
 }
 
 .leaderboard-rank {
@@ -450,8 +536,9 @@ body {
 }
 
 .current-user {
-    background-color: #e3f2fd !important;
+    background-color: rgba(0, 212, 255, 0.2) !important;
     font-weight: bold;
+    color: #00d4ff !important;
 }
 
 /* Completion Modal Styles */
@@ -554,23 +641,28 @@ body {
 .leaderboard-section {
     margin-top: 30px;
     padding: 20px;
-    background: #f8f9fa;
+    background: rgba(45, 55, 72, 0.95);
+    border: 1px solid rgba(0, 212, 255, 0.2);
     border-radius: 10px;
-    border: 1px solid #e9ecef;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
 }
 
 .leaderboard-section h3 {
     margin: 0 0 15px 0;
-    color: #333;
+    color: #e2e8f0;
     text-align: center;
     font-size: 1.2em;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 #leaderboard-display {
-    background: white;
+    background: rgba(26, 32, 44, 0.8);
+    border: 1px solid rgba(0, 212, 255, 0.1);
     border-radius: 8px;
     padding: 15px;
     min-height: 200px;
+    color: #e2e8f0;
 }
 
 .leaderboard-pagination {
@@ -583,7 +675,7 @@ body {
 
 #leaderboard-page-info {
     font-weight: bold;
-    color: #666;
+    color: #a0aec0;
     min-width: 60px;
     text-align: center;
 }

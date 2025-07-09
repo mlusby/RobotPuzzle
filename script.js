@@ -1483,6 +1483,33 @@ class RobotPuzzleGame {
         
         return profiles;
     }
+    
+    hideLoadingScreen() {
+        const loadingScreen = document.getElementById('loading-screen');
+        const gameContainer = document.getElementById('game-container');
+        
+        if (loadingScreen && gameContainer) {
+            loadingScreen.style.opacity = '0';
+            loadingScreen.style.transition = 'opacity 0.5s ease-out';
+            
+            setTimeout(() => {
+                loadingScreen.style.display = 'none';
+                gameContainer.style.display = 'block';
+                
+                // Fade in the game container
+                gameContainer.style.opacity = '0';
+                gameContainer.style.transition = 'opacity 0.5s ease-in';
+                requestAnimationFrame(() => {
+                    gameContainer.style.opacity = '1';
+                    
+                    // Ensure target is visible after layout is complete
+                    setTimeout(() => {
+                        this.updateTargetUI();
+                    }, 100);
+                });
+            }, 500);
+        }
+    }
 }
 
 // Initialize game when page loads
@@ -1502,11 +1529,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             await new Promise(resolve => setTimeout(resolve, 2000));
             await game.loadNewRound();
             game.gameInitialized = true;
+            
+            // Hide loading screen and show the game
+            game.hideLoadingScreen();
         } catch (error) {
             console.error('Failed to load initial round, using fallback:', error);
             // Fallback to original behavior - just show the game without rounds
             console.log('Game loaded with default configuration');
             game.gameInitialized = true;
+            
+            // Hide loading screen even on fallback
+            game.hideLoadingScreen();
         }
     }, 1000);
 });

@@ -38,7 +38,21 @@
         🔧 LOCAL DEVELOPMENT MODE - Testing Robot Puzzle Game with Mock Data
     </div>
     
-    <div class="game-container">
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="loading-screen">
+        <div class="loading-content">
+            <img src="robots_loading.png" alt="Loading..." class="loading-image">
+            <h2>Loading Robot Puzzle</h2>
+            <p>Preparing your game...</p>
+            <div class="loading-spinner">
+                <div class="spinner-dot"></div>
+                <div class="spinner-dot"></div>
+                <div class="spinner-dot"></div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="game-container" id="game-container" style="display: none;">
         <div class="game-header">
             <h1>Robot Puzzle</h1>
             <div class="game-info">

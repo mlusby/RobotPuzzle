@@ -12,6 +12,21 @@ Parameters:
     Default: dev
     AllowedValues: [dev, staging, prod]
     Description: Environment name
+  
+  DomainName:
+    Type: String
+    Default: ""
+    Description: Custom domain name (e.g., puzzle.yourdomain.com). Leave empty to skip CloudFront setup.
+  
+  CertificateArn:
+    Type: String
+    Default: ""
+    Description: ACM Certificate ARN for the custom domain (must be in us-east-1). Leave empty to skip HTTPS setup.
+
+Conditions:
+  HasCustomDomain: !Not [!Equals [!Ref DomainName, ""]]
+  HasSSLCertificate: !Not [!Equals [!Ref CertificateArn, ""]]
+  UseCloudFront: !And [!Condition HasCustomDomain, !Condition HasSSLCertificate]
 
 Resources:
   # S3 Bucket for static website hosting
@@ -46,6 +61,77 @@ Resources:
           - Sid: PublicReadGetObject
             Effect: Allow
             Principal: '*'
+            Action: 's3:GetObject'
+            Resource: !Join ['', ['arn:aws:s3:::', !Ref WebsiteBucket, '/*']]
+
+  # CloudFront Distribution for HTTPS and custom domain
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Condition: UseCloudFront
+    DependsOn: WebsiteBucketPolicy
+    Properties:
+      DistributionConfig:
+        Aliases:
+          - !Ref DomainName
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD, OPTIONS]
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+          MinTTL: 0
+          DefaultTTL: 86400
+          MaxTTL: 31536000
+          Compress: true
+        DefaultRootObject: index.html
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 300
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 300
+        Enabled: true
+        HttpVersion: http2
+        IPV6Enabled: true
+        Origins:
+          - Id: S3Origin
+            DomainName: !GetAtt WebsiteBucket.RegionalDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub 'origin-access-identity/cloudfront/${CloudFrontOriginAccessIdentity}'
+        PriceClass: PriceClass_100
+        ViewerCertificate:
+          AcmCertificateArn: !Ref CertificateArn
+          SslSupportMethod: sni-only
+          MinimumProtocolVersion: TLSv1.2_2021
+
+  # Origin Access Identity for CloudFront
+  CloudFrontOriginAccessIdentity:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Condition: UseCloudFront
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: !Sub 'OAI for ${AppName}-${Environment}'
+
+  # Updated S3 Bucket Policy for CloudFront access
+  CloudFrontBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Condition: UseCloudFront
+    DependsOn: CloudFrontOriginAccessIdentity
+    Properties:
+      Bucket: !Ref WebsiteBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudFrontAccess
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::cloudfront:user/CloudFront Origin Access Identity ${CloudFrontOriginAccessIdentity}'
             Action: 's3:GetObject'
             Resource: !Join ['', ['arn:aws:s3:::', !Ref WebsiteBucket, '/*']]
 
@@ -645,3 +731,24 @@ Outputs:
     Value: !Sub 'https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/prod'
     Export:
       Name: !Sub '${AppName}-${Environment}-api-url'
+
+  CloudFrontURL:
+    Condition: UseCloudFront
+    Description: CloudFront Distribution URL (HTTPS)
+    Value: !Sub 'https://${CloudFrontDistribution.DomainName}'
+    Export:
+      Name: !Sub '${AppName}-${Environment}-cloudfront-url'
+
+  CustomDomainURL:
+    Condition: HasCustomDomain
+    Description: Custom Domain URL (HTTPS)
+    Value: !Sub 'https://${DomainName}'
+    Export:
+      Name: !Sub '${AppName}-${Environment}-custom-domain-url'
+
+  CloudFrontDistributionId:
+    Condition: UseCloudFront
+    Description: CloudFront Distribution ID
+    Value: !Ref CloudFrontDistribution
+    Export:
+      Name: !Sub '${AppName}-${Environment}-cloudfront-distribution-id'
