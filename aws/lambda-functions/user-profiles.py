@@ -228,7 +228,7 @@ def cors_response():
 def cors_headers():
     """Return standard CORS headers"""
     return {
-        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Origin': 'https://robots.mlusby.dev',
         'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
         'Access-Control-Allow-Methods': 'GET,PUT,POST,DELETE,OPTIONS'
     }

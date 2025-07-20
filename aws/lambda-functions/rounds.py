@@ -382,7 +382,7 @@ def create_response(status_code, body):
         'statusCode': status_code,
         'headers': {
             'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': 'http://robot-puzzle-game-prod-website.s3-website-us-east-1.amazonaws.com',
+            'Access-Control-Allow-Origin': 'https://robots.mlusby.dev',
             'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
             'Access-Control-Allow-Methods': 'GET,POST,DELETE,OPTIONS'
         },

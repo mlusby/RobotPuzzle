@@ -14,8 +14,8 @@ CHECK_INTERVAL=30
 
 # Custom Domain Configuration (Optional)
 # Set these variables to enable HTTPS with your custom domain
-CUSTOM_DOMAIN=""  # e.g., "puzzle.yourdomain.com"
-CERTIFICATE_ARN=""  # e.g., "arn:aws:acm:us-east-1:123456789012:certificate/12345678-1234-1234-1234-123456789012"
+CUSTOM_DOMAIN="robots.mlusby.dev" 
+CERTIFICATE_ARN="arn:aws:acm:us-east-1:441860627368:certificate/f1199267-4d0d-42d0-8fe1-71d3cc99dc75"  
 
 # Colors for output
 RED='\033[0;31m'
