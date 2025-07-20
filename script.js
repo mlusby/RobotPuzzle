@@ -936,6 +936,13 @@ class RobotPuzzleGame {
     async loadPersonalBest() {
         if (!this.currentRound) return;
         
+        // Skip score fetching for temporary rounds that don't exist in database yet
+        if (this.currentRound.isTemporary || this.currentRound.roundId.startsWith('temp-')) {
+            this.personalBest = null;
+            document.getElementById('personal-best').textContent = '';
+            return;
+        }
+        
         try {
             const userScores = await apiService.getUserScores();
             const roundScore = userScores.find(score => score.roundId === this.currentRound.roundId);
@@ -1054,6 +1061,13 @@ class RobotPuzzleGame {
         if (!this.currentRound) {
             const display = document.getElementById('leaderboard-display');
             display.innerHTML = '<p>Load a round first to view the leaderboard!</p>';
+            return;
+        }
+
+        // Skip leaderboard loading for temporary rounds that don't exist in database yet
+        if (this.currentRound.isTemporary || this.currentRound.roundId.startsWith('temp-')) {
+            const display = document.getElementById('leaderboard-display');
+            display.innerHTML = '<p>This is a practice round. Complete it to create a competitive version!</p>';
             return;
         }
 
